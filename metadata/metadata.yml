@@ -1,0 +1,7 @@
+metadata_version: 1
+name: code-ocean-capsule-template
+description: Basic structure of a capsule to be customized as needed.
+authors:
+- name: AIND
+- name: Tom Chartrand
+- name: Meghan Turner

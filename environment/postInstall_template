@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -e
+
+# ----- INSTALL UPDATED VS CODE ----- #
+# install updated version of code-server
+VERSION=4.20.1
+mkdir /.code-server
+cd /.code-server
+curl -fL "https://github.com/coder/code-server/releases/download/v$VERSION/code-server-$VERSION-linux-amd64.tar.gz" \
+  | tar -xvz
+ln -s /.code-server/code-server-$VERSION-linux-amd64/bin/code-server  /usr/bin/code-server
+cd -
+
+# install any desired extensions
+CODE_EXTENSIONS_DIR=/.vscode/extensions
+if [ ! -d "$CODE_EXTENSIONS_DIR" ]
+    then
+       echo "Directory $CODE_EXTENSIONS_DIR DOES NOT exists."
+       mkdir -p $CODE_EXTENSIONS_DIR
+fi
+# Python, Jupyter, Git Graph, autodocstring extensions, respectively
+code-server --disable-telemetry --extensions-dir $CODE_EXTENSIONS_DIR --install-extension ms-python.python
+code-server --disable-telemetry --extensions-dir $CODE_EXTENSIONS_DIR --install-extension ms-toolsai.jupyter
+code-server --disable-telemetry --extensions-dir $CODE_EXTENSIONS_DIR --install-extension mhutchie.git-graph
+code-server --disable-telemetry --extensions-dir $CODE_EXTENSIONS_DIR --install-extension njpwerner.autodocstring
+
+# move/link VS Code directory into capsule, so it persists between cloud workstation runs
+# NB: this must be done AFTER the extension installations, otherwise the installed extensions can't be seen by the cloud workstation
+ln -s /root/capsule/code/.vscode/ /.vscode
