@@ -8,5 +8,21 @@ ARG GIT_ASKPASS
 ARG GIT_ACCESS_TOKEN
 COPY git-askpass /
 
-COPY postInstall /
-RUN /postInstall
+ADD "https://github.com/coder/code-server/releases/download/v4.9.0/code-server-4.9.0-linux-amd64.tar.gz" /.code-server/code-server.tar.gz
+
+RUN pip3 install -U --no-cache-dir \
+	dask \
+	zarr \
+    matplotlib \
+	pandas \
+	scikit-learn \
+	seaborn \
+	scipy \ 
+	aind-codeocean-api \
+    aind-codeocean-utils \
+    pyyaml
+
+RUN cd /.code-server \
+	&& tar -xvf code-server.tar.gz \
+	&& rm code-server.tar.gz \
+	&& ln -s /.code-server/code-server-4.9.0-linux-amd64/bin/code-server  /usr/bin/code-server
