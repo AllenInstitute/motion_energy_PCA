@@ -1,4 +1,9 @@
 
+import os
+import json
+
+
+
 def get_results_folder() -> str:
     """
     Retrieve the path to the results folder. Modify this function as needed to fit your project structure.
@@ -8,6 +13,42 @@ def get_results_folder() -> str:
     """
     # Placeholder implementation, update with actual results folder logic if needed
     return '/root/capsule/results'
+
+
+def find_files(root_dir: str, endswith = '', return_dir = True):
+    """
+    Recursively search for all Zarr files in the specified root directory
+    and save their paths to a JSON file.
+
+    Args:
+        root_dir (str): Root directory to search for Zarr files.
+
+    Returns:
+        list: List of paths to the found Zarr files.
+    """
+    collected_files = []
+
+    if return_dir:
+        # Walk through the directory tree
+        for root, dirs, files in os.walk(root_dir):
+            for dir_name in dirs:
+                if dir_name.endswith(endswith):
+                    collected_files.append(os.path.join(root, dir_name))
+    else: #return files
+        for root, _, files in os.walk(root_dir):
+            for file_name in files:
+                if file_name.endswith(endswith): 
+                    collected_files.append(os.path.join(root, file_name))
+
+    # # Save the paths to a JSON file
+    # with open(output_file, "w") as file:
+    #     json.dump(files, file, indent=4)
+
+    return collected_files
+
+
+
+####################### OLD FUNCTIONS
 
 def get_zarr_path(metadata: dict, path_to: str = 'motion_energy') -> str:
     """
@@ -26,7 +67,7 @@ def get_zarr_path(metadata: dict, path_to: str = 'motion_energy') -> str:
     # Create the directory if it doesn't exist
     os.makedirs(zarr_path, exist_ok=True)
 
-    filename = 'processed_frames_zarr' if path_to == 'gray_frames' else 'motion_energy_frames.zarr'
+    filename = 'processed_frames.zarr' if path_to == 'gray_frames' else 'motion_energy_frames.zarr'
     return os.path.join(zarr_path, filename)
 
 def get_data_path(metadata: dict) -> str:
