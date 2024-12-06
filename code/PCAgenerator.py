@@ -8,18 +8,31 @@ import utils
 from sklearn.decomposition import PCA
 
 class PCAgenerator:
-    def __init__(self, motion_zarr_path: str):
+    def __init__(self, motion_zarr_path: str, crop_region = None):
         self.motion_zarr_path = motion_zarr_path
         self.crop = True
         self.loaded_metadata = None
+        self.crop_region = crop_region
 
+    def define_crop_region(self, crop_region = None):
+        if crop_region is None:
+            crop_region=(100, 100, 300, 200)
+        # Unpack crop dimensions
+        x, y, width, height = crop_region
+        # Apply crop using slicing: [y:y+height, x:x+width]
+        print(f"Crop region: x={x}, y={y}, width={width}, height={height}")
+        self.crop_region=crop_region
+        return self
+
+ 
     def apply_pca_to_motion_energy(self, n_components=3):
         """Apply PCA to the motion energy."""
         me_store = zarr.DirectoryStore(self.motion_zarr_path)
         frames_me = da.from_zarr(me_store , component='data')
         print(f'Loaded frames {frames_me.shape}')
         if self.crop:
-            self.define_crop_region()
+            if self.crop_region is None:
+                self.define_crop_region()
             print(f'Applying crop to me frames {self.crop_region}')
             crop_y_start, crop_x_start, crop_y_end, crop_x_end = self.crop_region
             frames_me2 = frames_me[:, crop_y_start:crop_y_end, crop_x_start:crop_x_end]
@@ -47,19 +60,7 @@ class PCAgenerator:
         self.spatial_masks = spatial_masks
         return pca, pca_motion_energy
 
-    ## refactor
-
-    def define_crop_region(self,crop_region = None):
-        if crop_region is None:
-            crop_region=(100, 100, 300, 200)
-        # Unpack crop dimensions
-        x, y, width, height = crop_region
-        # Apply crop using slicing: [y:y+height, x:x+width]
-        print(f"Crop region: x={x}, y={y}, width={width}, height={height}")
-        self.crop_region=crop_region
-        return self
-
-        
+       
     def compute_spatial_masks(self, pcs, frames_me2, n_components= None, standardize=True):
         """
         Compute spatial masks from principal components and motion energy.
@@ -107,3 +108,5 @@ class PCAgenerator:
             spatial_masks.append(mean_final_mask)
         
         return np.array(spatial_masks)
+
+
