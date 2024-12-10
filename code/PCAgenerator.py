@@ -17,6 +17,8 @@ class PCAgenerator:
         self.crop_region = crop_region
         self.n_components = 100 # to fit PCA
         self.n_to_plot = 3 # to show
+        self.standardize_PCA = False
+        self.chunk_size = 100
 
     def _define_crop_region(self, crop_region = None):
         #check metadata:
@@ -31,16 +33,19 @@ class PCAgenerator:
         return self
 
  
-    def _apply_pca_to_motion_energy(self, n_components=None):
+    def _apply_pca_to_motion_energy(self):
         """Apply PCA to the motion energy."""
         me_store = zarr.DirectoryStore(self.motion_zarr_path)
         frames_me = da.from_zarr(me_store , component='data')
         print(f'Loaded frames {frames_me.shape}')
+
+        # Get number of components to fit
         if self.n_components is None:
-            n_components = 3
+            n_components = 100
         else:
             n_components = self.n_components
 
+        # crop frames if needed
         if self.crop:
             if self.crop_region is None:
                 self._define_crop_region()
@@ -49,7 +54,7 @@ class PCAgenerator:
             frames_me2 = frames_me[:, crop_y_start:crop_y_end, crop_x_start:crop_x_end]
             H = crop_y_end - crop_y_start
             W = crop_x_end - crop_x_start
-            frames_me2 = frames_me2.rechunk((100, H, W)) 
+            frames_me2 = frames_me2.rechunk((self.chunk_size, H, W)) 
         else:
             frames_me2 = frames_me
 
@@ -57,13 +62,38 @@ class PCAgenerator:
         n_frames, height, width = frames_me2.shape
         flattened_frames = frames_me2.reshape(n_frames, height * width)
         
-        # Convert Dask array to NumPy array for PCA (PCA requires NumPy array)
-        print("Converting frames to NumPy array for PCA...")
-        flattened_frames = flattened_frames.compute()
-        pca = PCA(n_components=n_components)
+        # Standardize pixels
+        if self.standardize_PCA:
+            print('Standardizing data...)
+            mean = flattened_frames.mean(axis=0)
+            std = flattened_frames.std(axis=0)
+            flattened_frames2 = (flattened_frames - mean) / std
+        else:
+            print('Skipping standardization of data..')
+            flattened_frames2 = flattened_frames
+        
+        #apply PCA to chuncks
+        chunks = flattened_frames2.rechunk((self.chunk_size, None))
+
+        # Use IncrementalPCA for chunked processing
+        ipca = IncrementalPCA(n_components=n_components)
+
+        # Fit PCA incrementally on each chunk
+        print("Converting frames to NumPy array for PCA in chunks...")
+        for chunk in chunks.to_delayed():
+            ipca.partial_fit(chunk.compute())
+
+        # Transform data in chunks
+        transformed_chunks = [ipca.transform(chunk.compute()) for  chunk in chunks.to_delayed()]
+
+        # flattened_frames = flattened_frames.compute()
+        # pca = PCA(n_components=n_components)
+
         # Apply PCS
-        pca_motion_energy = pca.fit_transform(flattened_frames)
-        self.pca = pca
+        # Combine transformed chunks into a single array
+        pca_motion_energy = da.concatenate([da.from_array(chunk) for chunk in transformed_chunks], axis=0)
+
+        self.pca = ipca
         self.pca_motion_energy = pca_motion_energy
 
         # create spatial masks to see what PCs look like

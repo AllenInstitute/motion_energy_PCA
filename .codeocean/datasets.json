@@ -2,10 +2,6 @@
 	"version": 1,
 	"attached_datasets": [
 		{
-			"id": "58d338ba-e3ca-4d7b-b04a-d7d5c1a1d797",
-			"mount": "me_test2"
-		},
-		{
 			"id": "e939c429-cacf-4916-9754-c96a1590fa39",
 			"mount": "749315_nose_motion_energy"
 		}
