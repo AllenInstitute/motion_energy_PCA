@@ -9,8 +9,9 @@ from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 
 class PCAgenerator:
-    def __init__(self, motion_zarr_path: str, crop_region = None):
+    def __init__(self, motion_zarr_path: str, pkl_file : str, crop_region = None):
         self.motion_zarr_path = motion_zarr_path
+        self.pkl_file = pkl_file
         self.crop = True
         self.loaded_metadata = None
         self.crop_region = crop_region
@@ -18,6 +19,8 @@ class PCAgenerator:
         self.n_to_plot = 3 # to show
 
     def _define_crop_region(self, crop_region = None):
+        #check metadata:
+        crop_region = utils.check_crop_region(self.pkl_file)
         if crop_region is None:
             crop_region=(100, 100, 300, 200)
         # Unpack crop dimensions
@@ -168,16 +171,15 @@ class PCAgenerator:
 
         return fig
 
-    def plot_pca_components_traces(pca_motion_energy, x_trace_seconds, component_indices=[0, 1, 2], axes=None):
+    def plot_pca_components_traces(self, component_indices=[0, 1, 2], axes=None):
         """
         Plots 3 PCA components from pca_motion_energy against x_trace_seconds.
 
-        Parameters:
-        - pca_motion_energy: numpy array of shape (n_samples, n_components), where n_components >= 3
-        - x_trace_seconds: numpy array of shape (n_samples,), representing the time in seconds
         - component_indices: list of indices for the PCA components to plot (default: [0, 1, 2])
         - title: title of the plot
         """
+        pca_motion_energy = self.pca_motion_energy
+        fps = utils.get_fps(self.pkl_file)
         title_fontsize = 20
         label_fontsize = 16
         tick_fontsize = 14
