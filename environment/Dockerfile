@@ -20,7 +20,8 @@ RUN pip3 install -U --no-cache-dir \
 	scipy \ 
 	aind-codeocean-api \
     aind-codeocean-utils \
-    pyyaml
+    pyyaml \
+	dask_ml
 
 RUN cd /.code-server \
 	&& tar -xvf code-server.tar.gz \

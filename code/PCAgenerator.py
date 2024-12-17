@@ -6,6 +6,7 @@ import json
 import os
 import utils
 from sklearn.decomposition import PCA
+from dask_ml.decomposition import IncrementalPCA
 import matplotlib.pyplot as plt
 
 class PCAgenerator:
@@ -51,49 +52,63 @@ class PCAgenerator:
                 self._define_crop_region()
             print(f'Applying crop to me frames {self.crop_region}')
             crop_y_start, crop_x_start, crop_y_end, crop_x_end = self.crop_region
-            frames_me2 = frames_me[:, crop_y_start:crop_y_end, crop_x_start:crop_x_end]
+            frames_me2 = frames_me[:, crop_y_start:crop_y_end, crop_x_start:crop_x_end].copy()
+            del frames_me
             H = crop_y_end - crop_y_start
             W = crop_x_end - crop_x_start
-            frames_me2 = frames_me2.rechunk((self.chunk_size, H, W)) 
+            # frames_me2 = frames_me2.rechunk((self.chunk_size, H, W)) 
         else:
             frames_me2 = frames_me
+        
 
         # Reshape frames for PCA: (n_frames, height * width)
         n_frames, height, width = frames_me2.shape
-        flattened_frames = frames_me2.reshape(n_frames, height * width)
-        
-        # Standardize pixels
+        new_shape = (n_frames, height * width)
+        new_chunks = (self.chunk_size, new_shape[0])
+        try: 
+            reshaped_frames = frames_me2.reshape(new_shape).rechunk(new_chunks)
+            print(f"new reshaped array array shape: {reshaped_frames.shape}")
+            print(f"rechunked array size: {reshaped_frames.chunksize}")
+        except ValueError as e:
+            print(f"Error during reshaping: {e}")
+
+        # Standardize pixels if required
         if self.standardize_PCA:
-            print('Standardizing data...)
-            mean = flattened_frames.mean(axis=0)
-            std = flattened_frames.std(axis=0)
-            flattened_frames2 = (flattened_frames - mean) / std
+            print("Standardizing data...")
+            mean = reshaped_frames.mean(axis=0)
+            std = reshaped_frames.std(axis=0)
+            standardized_frames = (reshaped_frames - mean) / std
         else:
-            print('Skipping standardization of data..')
-            flattened_frames2 = flattened_frames
-        
-        #apply PCA to chuncks
-        chunks = flattened_frames2.rechunk((self.chunk_size, None))
+            print("Skipping standardization of data.")
+            standardized_frames = reshaped_frames
 
-        # Use IncrementalPCA for chunked processing
-        ipca = IncrementalPCA(n_components=n_components)
+        # print(standardized_frames.chunksize)
+        # # Apply PCA to chunks
+        # ipca = IncrementalPCA(n_components=n_components)
 
-        # Fit PCA incrementally on each chunk
-        print("Converting frames to NumPy array for PCA in chunks...")
-        for chunk in chunks.to_delayed():
-            ipca.partial_fit(chunk.compute())
+        # # Incrementally fit PCA on Dask array
+        # print(type(standardized_frames))
+        # for chunk in standardized_frames.to_delayed():
+        #     print("Fitting PCA in chunks...")
+        #     chunk_data = chunk.compute()
+        #     print(chunk_data.shape)
+        #     ipca.partial_fit(chunk_data)
+        # #ipca.partial_fit(standardized_frames)  
+        # # Transform data in chunks
+        # transformed_chunks = [
+        #     da.from_array(ipca.transform(chunk), chunks=(self.chunk_size, n_components))
+        #     for chunk in standardized_frames.to_delayed()
+        pca = PCA(n_components=n_components)
+        pca.fit(standardized_frames)
+        pca.transform(standardized_frames)
+        # transformed_chunks = [da.from_array(pca.transform(chunk), chunks=(self.chunk_size, n_components))
+        #     for chunk in standardized_frames.to_delayed()]
 
-        # Transform data in chunks
-        transformed_chunks = [ipca.transform(chunk.compute()) for  chunk in chunks.to_delayed()]
+        # # Combine transformed chunks into a single array
+        # pca_motion_energy = da.concatenate(transformed_chunks, axis=0)
 
-        # flattened_frames = flattened_frames.compute()
-        # pca = PCA(n_components=n_components)
 
-        # Apply PCS
-        # Combine transformed chunks into a single array
-        pca_motion_energy = da.concatenate([da.from_array(chunk) for chunk in transformed_chunks], axis=0)
-
-        self.pca = ipca
+        self.pca = pca
         self.pca_motion_energy = pca_motion_energy
 
         # create spatial masks to see what PCs look like
