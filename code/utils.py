@@ -141,3 +141,13 @@ def construct_zarr_folder(metadata: dict) -> str:
     except KeyError as e:
         raise KeyError(f"Missing required metadata field: {e}")
 
+def get_fps(file_path):
+    meta = load_pickle_file(file_path)
+    for key, value in meta.loaded_metadata.items():
+        if "fps" in key.lower():
+            print(f"Found key: '{key}' with value: {value}")
+            return value
+    else:
+        print("fps not found.")
+    
+    return None

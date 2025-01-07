@@ -6,11 +6,13 @@ import json
 import os
 import utils
 from sklearn.decomposition import PCA
-from dask_ml.decomposition import IncrementalPCA
+from sklearn.decomposition import IncrementalPCA
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 class PCAgenerator:
-    def __init__(self, motion_zarr_path: str, pkl_file : str, crop_region = None):
+    def __init__(self, motion_zarr_path: str, pkl_file : str, crop_region = None,
+    standardize4PCA = True):
         self.motion_zarr_path = motion_zarr_path
         self.pkl_file = pkl_file
         self.crop = True
@@ -18,7 +20,7 @@ class PCAgenerator:
         self.crop_region = crop_region
         self.n_components = 100 # to fit PCA
         self.n_to_plot = 3 # to show
-        self.standardize_PCA = False
+        self.standardize4PCA = standardize4PCA
         self.chunk_size = 100
 
     def _define_crop_region(self, crop_region = None):
@@ -73,50 +75,130 @@ class PCAgenerator:
             print(f"Error during reshaping: {e}")
 
         # Standardize pixels if required
-        if self.standardize_PCA:
+        if self.standardize4PCA:
             print("Standardizing data...")
             mean = reshaped_frames.mean(axis=0)
             std = reshaped_frames.std(axis=0)
             standardized_frames = (reshaped_frames - mean) / std
+            print('done.')
         else:
             print("Skipping standardization of data.")
             standardized_frames = reshaped_frames
 
-        # print(standardized_frames.chunksize)
-        # # Apply PCA to chunks
-        # ipca = IncrementalPCA(n_components=n_components)
-
-        # # Incrementally fit PCA on Dask array
-        # print(type(standardized_frames))
-        # for chunk in standardized_frames.to_delayed():
-        #     print("Fitting PCA in chunks...")
-        #     chunk_data = chunk.compute()
-        #     print(chunk_data.shape)
-        #     ipca.partial_fit(chunk_data)
-        # #ipca.partial_fit(standardized_frames)  
-        # # Transform data in chunks
-        # transformed_chunks = [
-        #     da.from_array(ipca.transform(chunk), chunks=(self.chunk_size, n_components))
-        #     for chunk in standardized_frames.to_delayed()
-        pca = PCA(n_components=n_components)
-        pca.fit(standardized_frames)
-        pca.transform(standardized_frames)
-        # transformed_chunks = [da.from_array(pca.transform(chunk), chunks=(self.chunk_size, n_components))
-        #     for chunk in standardized_frames.to_delayed()]
-
-        # # Combine transformed chunks into a single array
-        # pca_motion_energy = da.concatenate(transformed_chunks, axis=0)
+        # plot random frame
+        index = np.random(frames_me2.shape[0])
+        plt.imshow(frames_me2[index],vmax=np.percentile(frames_me2[index].ravel(), 98))
+        plt.show()
 
 
-        self.pca = pca
-        self.pca_motion_energy = pca_motion_energy
+        # Apply PCA to chunks
+        ipca = IncrementalPCA(n_components=n_components)
 
+        # Incrementally fit PCA on Dask array
+        print("Fitting PCA in chunks...")
+        for chunk in standardized_frames.to_delayed():
+            chunk_data = chunk[0].compute()
+            ipca.partial_fit(chunk_data)
+        print('done.')
+        # Transform data in chunks
+        print("transforming data in chunks...")
+        transformed_chunks = [
+             da.from_array(ipca.transform(chunk[0].compute()), chunks=(self.chunk_size, n_components))
+            for chunk in standardized_frames.to_delayed()]
+        print('done.')
+        # Combine transformed chunks into a single array
+        pca_motion_energy = da.concatenate(transformed_chunks, axis=0)
+        self.pca = ipca
+        self.pca_mpotion_energy = pca_motion_energy
+        print('added PCA results.')
+        # try using regular PCA
+        # pca = PCA(n_components=n_components)
+        # pca_motion_energy = pca.fit_transform(standardized_frames)
+        # self.pca = pca
+        # self.pca_motion_energy = pca_motion_energy
+        
         # create spatial masks to see what PCs look like
+        print('Computing spatial masks...')
         spatial_masks = self._compute_spatial_masks(pcs = pca_motion_energy, frames_me2=frames_me2, standardize=True)
+        print('done.')
         self.spatial_masks = spatial_masks
         return pca, pca_motion_energy
 
-       
+    def _apply_pca_to_motion_energy_without_dask(self):
+        """Apply PCA to the motion energy."""
+        # Open the Zarr store and load the 'data' array
+        me_store = zarr.DirectoryStore(self.motion_zarr_path)
+        zarr_group = zarr.open(me_store, mode='r')
+        frames_me = zarr_group['data']
+        print(f'Loaded frames {frames_me.shape}')
+
+        # Determine the number of components
+        n_components = self.n_components if self.n_components is not None else 100
+
+        # Crop frames if needed
+        if self.crop:
+            if self.crop_region is None:
+                self._define_crop_region()
+            print(f'Applying crop to ME frames {self.crop_region}')
+            crop_y_start, crop_x_start, crop_y_end, crop_x_end = self.crop_region
+            frames_me = frames_me[:, crop_y_start:crop_y_end, crop_x_start:crop_x_end]
+            H = crop_y_end - crop_y_start
+            W = crop_x_end - crop_x_start
+        else:
+            H, W = frames_me.shape[1:]
+
+        # Initialize Incremental PCA
+        ipca = IncrementalPCA(n_components=n_components)
+
+        # Standardize if required
+        if self.standardize4PCA:
+            print("Standardizing data...")
+            mean = np.zeros(H * W)
+            std = np.zeros(H * W)
+
+        # Process data chunk by chunk
+        print("Fitting PCA in chunks...")
+        for i in tqdm(range(0, frames_me.shape[0], self.chunk_size)):
+            chunk = frames_me[i:i + self.chunk_size]
+            chunk_flattened = chunk.reshape(chunk.shape[0], -1)
+
+            if self.standardize4PCA:
+                if i == 0:  # Compute mean and std on the first chunk
+                    mean = chunk_flattened.mean(axis=0)
+                    std = chunk_flattened.std(axis=0)
+                chunk_flattened = (chunk_flattened - mean) / std
+
+            ipca.partial_fit(chunk_flattened)
+        print("PCA fitting complete.")
+
+        # Transform data in chunks
+        print("Transforming data in chunks...")
+        transformed_chunks = []
+        for i in range(0, frames_me.shape[0], self.chunk_size):
+            chunk = frames_me[i:i + self.chunk_size]
+            chunk_flattened = chunk.reshape(chunk.shape[0], -1)
+
+            if self.standardize4PCA:
+                chunk_flattened = (chunk_flattened - mean) / std
+
+            transformed_chunk = ipca.transform(chunk_flattened)
+            transformed_chunks.append(transformed_chunk)
+
+        # Combine transformed chunks into a single array
+        pca_motion_energy = np.vstack(transformed_chunks)
+        self.pca = ipca
+        self.pca_motion_energy = pca_motion_energy
+        print('Added PCA results.')
+
+        # Create spatial masks to visualize PCs
+        print('Computing spatial masks...')
+        spatial_masks = self._compute_spatial_masks(pca_motion_energy, frames_me, standardize=True)
+        print('Done.')
+        self.spatial_masks = spatial_masks
+
+        return ipca, pca_motion_energy
+
+
     def _compute_spatial_masks(self, pcs, frames_me2, standardize=True):
         """
         Compute spatial masks from principal components and motion energy.
@@ -223,6 +305,8 @@ class PCAgenerator:
         - component_indices: list of indices for the PCA components to plot (default: [0, 1, 2])
         - title: title of the plot
         """
+        if axes is None:
+            fig, axes = plt.subplots(len(component_indices), 1,figsize=(15,2*len(component_indices)))
         pca_motion_energy = self.pca_motion_energy
         fps = utils.get_fps(self.pkl_file)
         title_fontsize = 20
@@ -231,8 +315,11 @@ class PCAgenerator:
         if pca_motion_energy.shape[1] < 3:
             raise ValueError("pca_motion_energy must have at least 3 components to plot.")
         
+        x_range = 10000
+        
+        x_trace_seconds = np.round(np.arange(1, x_range) / fps, 2)
         for i, ax in enumerate(axes):
-            ax.plot(x_trace_seconds, pca_motion_energy[:, component_indices[i]])
+            ax.plot(x_trace_seconds, pca_motion_energy[np.arange(1, x_range), component_indices[i]])
             ax.set_ylabel(f'PCA {component_indices[i] + 1}', fontsize = label_fontsize)
             ax.set_title(f'PCA {component_indices[i] + 1} over time (s)', fontsize = title_fontsize)
             ax.tick_params(axis='both', which='major', labelsize=tick_fontsize)
@@ -240,6 +327,6 @@ class PCAgenerator:
         
         axes[-1].set_xlabel('Time (s)', fontsize = label_fontsize)
         
-        
+        plt.tight_layout()
         return axes
 
