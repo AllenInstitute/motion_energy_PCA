@@ -35,6 +35,240 @@ class PCAgenerator:
         self.crop_region=crop_region
         return self
 
+    def _apply_pca_to_motion_energy_without_dask(self):
+        """Apply PCA to the motion energy."""
+        # Open the Zarr store and load the 'data' array
+        me_store = zarr.DirectoryStore(self.motion_zarr_path)
+        zarr_group = zarr.open(me_store, mode='r')
+        frames_me = zarr_group['data']
+        print(f'Loaded frames {frames_me.shape}')
+
+        # Determine the number of components
+        n_components = self.n_components if self.n_components is not None else 100
+
+        # Crop frames if needed
+        if self.crop:
+            if self.crop_region is None:
+                self._define_crop_region()
+            print(f'Applying crop to ME frames {self.crop_region}')
+            crop_y_start, crop_x_start, crop_y_end, crop_x_end = self.crop_region
+            frames_me = frames_me[:, crop_y_start:crop_y_end, crop_x_start:crop_x_end]
+            H = crop_y_end - crop_y_start
+            W = crop_x_end - crop_x_start
+        else:
+            H, W = frames_me.shape[1:]
+
+        # Initialize Incremental PCA
+        ipca = IncrementalPCA(n_components=n_components)
+
+        # Standardize if required
+        if self.standardize4PCA:
+            print("Standardizing data...")
+            mean = np.zeros(H * W)
+            std = np.zeros(H * W)
+
+        # Process data chunk by chunk
+        print("Fitting PCA in chunks...")
+        for i in tqdm(range(20000, frames_me.shape[0], self.chunk_size)):
+            chunk = frames_me[i:i + self.chunk_size]
+
+            # check to make sure the last chunk is not too short 
+            # ideally chunk.shape[0] should be >= n_components
+            # which means that chunk_size should be >= n_components
+            next_chunk = frames_me[i + self.chunk_size:]
+            print(next_chunk.shape)
+            if next_chunk.shape[0] < n_components:
+                chunk = frames_me[i:] # get the rest of frames 
+                print(f'processing last chunk, shape: {chunk.shape}')
+
+            chunk_flattened = chunk.reshape(chunk.shape[0], -1)
+
+            # if self.standardize4PCA:
+            #     if i == 0:  # Compute mean and std on the first chunk
+            #         mean = chunk_flattened.mean(axis=0)
+            #         std = chunk_flattened.std(axis=0)
+            #     chunk_flattened = (chunk_flattened - mean) / std
+            
+            ipca.partial_fit(chunk_flattened)
+
+        print("PCA fitting complete.")
+
+        # Transform data in chunks
+        print("Transforming data in chunks...")
+        transformed_chunks = []
+        for i in range(0, frames_me.shape[0], self.chunk_size):
+            chunk = frames_me[i:i + self.chunk_size]
+            chunk_flattened = chunk.reshape(chunk.shape[0], -1)
+
+            if self.standardize4PCA:
+                chunk_flattened = (chunk_flattened - mean) / std
+
+            transformed_chunk = ipca.transform(chunk_flattened)
+            transformed_chunks.append(transformed_chunk)
+
+        # Combine transformed chunks into a single array
+        pca_motion_energy = np.vstack(transformed_chunks)
+        self.pca = ipca
+        self.pca_motion_energy = pca_motion_energy
+        print('Added PCA results.')
+
+        # Create spatial masks to visualize PCs
+        print('Computing spatial masks...')
+        spatial_masks = self._compute_spatial_masks_in_chunks(pca_motion_energy, frames_me, standardize=True)
+        print('Done.')
+        self.spatial_masks = spatial_masks
+
+        return ipca, pca_motion_energy
+
+
+    def _compute_spatial_masks_in_chunks(self, pcs, frames_me2, standardize=True):
+        """
+        Compute spatial masks from principal components and motion energy.
+
+        Parameters:
+        ----------
+        pcs : np.ndarray
+            A 2D array of shape (n_samples, n_components) containing principal components.
+        frames_me2 : zarr.Array
+            A Zarr array of shape (n_samples, height, width) representing motion energy data.
+        standardize : bool, optional
+            Whether to standardize the masks. Defaults to True.
+
+        Returns:
+        -------
+        spatial_masks : list of np.ndarray
+            A list of 2D arrays where each array represents the mean spatial mask for each principal component.
+        """
+
+        # Set default number of components if not specified
+        n_components = self.n_to_plot if self.n_to_plot is not None else 3
+        spatial_masks = []
+
+        # Iterate over principal components
+        for i in range(n_components):
+            # Extract the i-th principal component
+            pc = pcs[:, i]
+            mask_sum = None
+            count = 0
+
+            # Iterate over chunks of frames_me2
+            for chunk_start in range(0, frames_me2.shape[0], self.chunk_size):
+                chunk_end = min(chunk_start + self.chunk_size, frames_me2.shape[0])
+
+                # Load the chunk from Zarr
+                chunk = frames_me2[chunk_start:chunk_end]
+
+                # Apply the principal component to the chunk
+                chunk_masks = chunk * pc[chunk_start:chunk_end, np.newaxis, np.newaxis]
+
+                # Accumulate the sum of masks
+                if mask_sum is None:
+                    mask_sum = np.sum(chunk_masks, axis=0)
+                else:
+                    mask_sum += np.sum(chunk_masks, axis=0)
+
+                # Update the count
+                count += chunk_masks.shape[0]
+
+            # Compute the mean mask
+            mean_mask = mask_sum / count
+
+            # Standardize the mask if required
+            if standardize:
+                mean = mean_mask.mean()
+                std = mean_mask.std()
+                mean_mask = (mean_mask - mean) / std
+
+            # Append the computed mean mask to the list
+            spatial_masks.append(mean_mask)
+
+        return np.array(spatial_masks)
+
+    def _plot_spatial_masks(self):
+            
+        n_components = self.n_components
+            
+        fig = plt.figure(figsize=(3 * n_components, 2))
+        
+        for i, mask in enumerate(self.spatial_masks):
+            plt.subplot(1, n_components, i + 1)
+            plt.imshow(mask, cmap='bwr', aspect='auto', vmin=-1, vmax=1)
+            plt.colorbar(label='')
+            plt.axis('off')
+            plt.title(f'PC {i + 1} mask')
+        
+        plt.show()
+        
+        return fig
+
+    def _plot_explained_variance(self):
+        """
+        Plots the explained variance ratio of each principal component from a PCA model.
+
+        Returns:
+        -------
+        fig : matplotlib.figure.Figure
+            The figure object containing the plot of explained variance.
+        """
+        fig = plt.figure(figsize=(4,2))
+        fontsize=12
+        # Check if pca has been fitted
+        pca = self.pca
+        if not hasattr(pca, 'explained_variance_ratio_'):
+            raise ValueError("PCA object must be fitted before plotting.")
+        
+        # Get the explained variance ratio and convert to percentage
+        explained_variance_ratio = pca.explained_variance_ratio_
+        explained_variance = explained_variance_ratio * 100
+        
+        # Plot the explained variance
+        
+        plt.plot(range(1, len(explained_variance_ratio) + 1), explained_variance, 'o-', linewidth=2, markersize=5)
+        plt.title('Variance Explained by Principal Components', fontsize=fontsize)
+        plt.xlabel('Principal Component', fontsize=fontsize)
+        plt.ylabel('Explained Variance (%)', fontsize=fontsize)
+        plt.xlim([0, 30]) #show only top 30
+        plt.tight_layout()
+        #plt.xticks(range(1, len(explained_variance_ratio) + 1))
+        #plt.grid(True)
+        plt.show()
+
+        return fig
+
+    def _plot_pca_components_traces(self, component_indices=[0, 1, 2], axes=None):
+        """
+        Plots 3 PCA components from pca_motion_energy against x_trace_seconds.
+
+        - component_indices: list of indices for the PCA components to plot (default: [0, 1, 2])
+        - title: title of the plot
+        """
+        if axes is None:
+            fig, axes = plt.subplots(len(component_indices), 1,figsize=(15,2*len(component_indices)))
+        pca_motion_energy = self.pca_motion_energy
+        fps = utils.get_fps(self.pkl_file)
+        title_fontsize = 20
+        label_fontsize = 16
+        tick_fontsize = 14
+        if pca_motion_energy.shape[1] < 3:
+            raise ValueError("pca_motion_energy must have at least 3 components to plot.")
+        
+        x_range = 10000
+        
+        x_trace_seconds = np.round(np.arange(1, x_range) / fps, 2)
+        for i, ax in enumerate(axes):
+            ax.plot(x_trace_seconds, pca_motion_energy[np.arange(1, x_range), component_indices[i]])
+            ax.set_ylabel(f'PCA {component_indices[i] + 1}', fontsize = label_fontsize)
+            ax.set_title(f'PCA {component_indices[i] + 1} over time (s)', fontsize = title_fontsize)
+            ax.tick_params(axis='both', which='major', labelsize=tick_fontsize)
+            ax.grid(True)
+        
+        axes[-1].set_xlabel('Time (s)', fontsize = label_fontsize)
+        
+        plt.tight_layout()
+        return axes
+
+
+## extra
  
     def _apply_pca_to_motion_energy(self):
         """Apply PCA to the motion energy."""
@@ -124,80 +358,6 @@ class PCAgenerator:
         self.spatial_masks = spatial_masks
         return pca, pca_motion_energy
 
-    def _apply_pca_to_motion_energy_without_dask(self):
-        """Apply PCA to the motion energy."""
-        # Open the Zarr store and load the 'data' array
-        me_store = zarr.DirectoryStore(self.motion_zarr_path)
-        zarr_group = zarr.open(me_store, mode='r')
-        frames_me = zarr_group['data']
-        print(f'Loaded frames {frames_me.shape}')
-
-        # Determine the number of components
-        n_components = self.n_components if self.n_components is not None else 100
-
-        # Crop frames if needed
-        if self.crop:
-            if self.crop_region is None:
-                self._define_crop_region()
-            print(f'Applying crop to ME frames {self.crop_region}')
-            crop_y_start, crop_x_start, crop_y_end, crop_x_end = self.crop_region
-            frames_me = frames_me[:, crop_y_start:crop_y_end, crop_x_start:crop_x_end]
-            H = crop_y_end - crop_y_start
-            W = crop_x_end - crop_x_start
-        else:
-            H, W = frames_me.shape[1:]
-
-        # Initialize Incremental PCA
-        ipca = IncrementalPCA(n_components=n_components)
-
-        # Standardize if required
-        if self.standardize4PCA:
-            print("Standardizing data...")
-            mean = np.zeros(H * W)
-            std = np.zeros(H * W)
-
-        # Process data chunk by chunk
-        print("Fitting PCA in chunks...")
-        for i in tqdm(range(0, frames_me.shape[0], self.chunk_size)):
-            chunk = frames_me[i:i + self.chunk_size]
-            chunk_flattened = chunk.reshape(chunk.shape[0], -1)
-
-            if self.standardize4PCA:
-                if i == 0:  # Compute mean and std on the first chunk
-                    mean = chunk_flattened.mean(axis=0)
-                    std = chunk_flattened.std(axis=0)
-                chunk_flattened = (chunk_flattened - mean) / std
-
-            ipca.partial_fit(chunk_flattened)
-        print("PCA fitting complete.")
-
-        # Transform data in chunks
-        print("Transforming data in chunks...")
-        transformed_chunks = []
-        for i in range(0, frames_me.shape[0], self.chunk_size):
-            chunk = frames_me[i:i + self.chunk_size]
-            chunk_flattened = chunk.reshape(chunk.shape[0], -1)
-
-            if self.standardize4PCA:
-                chunk_flattened = (chunk_flattened - mean) / std
-
-            transformed_chunk = ipca.transform(chunk_flattened)
-            transformed_chunks.append(transformed_chunk)
-
-        # Combine transformed chunks into a single array
-        pca_motion_energy = np.vstack(transformed_chunks)
-        self.pca = ipca
-        self.pca_motion_energy = pca_motion_energy
-        print('Added PCA results.')
-
-        # Create spatial masks to visualize PCs
-        print('Computing spatial masks...')
-        spatial_masks = self._compute_spatial_masks(pca_motion_energy, frames_me, standardize=True)
-        print('Done.')
-        self.spatial_masks = spatial_masks
-
-        return ipca, pca_motion_energy
-
 
     def _compute_spatial_masks(self, pcs, frames_me2, standardize=True):
         """
@@ -246,87 +406,3 @@ class PCAgenerator:
             spatial_masks.append(mean_final_mask)
         
         return np.array(spatial_masks)
-
-    def plot_spatial_masks(self):
-            
-        n_components = self.n_components
-            
-        fig = plt.figure(figsize=(3 * n_components, 2))
-        
-        for i, mask in enumerate(self.spatial_masks):
-            plt.subplot(1, n_components, i + 1)
-            plt.imshow(mask, cmap='bwr', aspect='auto', vmin=-1, vmax=1)
-            plt.colorbar(label='')
-            plt.axis('off')
-            plt.title(f'PC {i + 1} mask')
-        
-        plt.show()
-        
-        return fig
-
-    def plot_explained_variance(self):
-        """
-        Plots the explained variance ratio of each principal component from a PCA model.
-
-        Returns:
-        -------
-        fig : matplotlib.figure.Figure
-            The figure object containing the plot of explained variance.
-        """
-        fig = plt.figure(figsize=(4,2))
-        fontsize=12
-        # Check if pca has been fitted
-        pca = self.pca
-        if not hasattr(pca, 'explained_variance_ratio_'):
-            raise ValueError("PCA object must be fitted before plotting.")
-        
-        # Get the explained variance ratio and convert to percentage
-        explained_variance_ratio = pca.explained_variance_ratio_
-        explained_variance = explained_variance_ratio * 100
-        
-        # Plot the explained variance
-        
-        plt.plot(range(1, len(explained_variance_ratio) + 1), explained_variance, 'o-', linewidth=2, markersize=5)
-        plt.title('Variance Explained by Principal Components', fontsize=fontsize)
-        plt.xlabel('Principal Component', fontsize=fontsize)
-        plt.ylabel('Explained Variance (%)', fontsize=fontsize)
-        plt.xlim([0, 30]) #show only top 30
-        plt.tight_layout()
-        #plt.xticks(range(1, len(explained_variance_ratio) + 1))
-        #plt.grid(True)
-        plt.show()
-
-        return fig
-
-    def plot_pca_components_traces(self, component_indices=[0, 1, 2], axes=None):
-        """
-        Plots 3 PCA components from pca_motion_energy against x_trace_seconds.
-
-        - component_indices: list of indices for the PCA components to plot (default: [0, 1, 2])
-        - title: title of the plot
-        """
-        if axes is None:
-            fig, axes = plt.subplots(len(component_indices), 1,figsize=(15,2*len(component_indices)))
-        pca_motion_energy = self.pca_motion_energy
-        fps = utils.get_fps(self.pkl_file)
-        title_fontsize = 20
-        label_fontsize = 16
-        tick_fontsize = 14
-        if pca_motion_energy.shape[1] < 3:
-            raise ValueError("pca_motion_energy must have at least 3 components to plot.")
-        
-        x_range = 10000
-        
-        x_trace_seconds = np.round(np.arange(1, x_range) / fps, 2)
-        for i, ax in enumerate(axes):
-            ax.plot(x_trace_seconds, pca_motion_energy[np.arange(1, x_range), component_indices[i]])
-            ax.set_ylabel(f'PCA {component_indices[i] + 1}', fontsize = label_fontsize)
-            ax.set_title(f'PCA {component_indices[i] + 1} over time (s)', fontsize = title_fontsize)
-            ax.tick_params(axis='both', which='major', labelsize=tick_fontsize)
-            ax.grid(True)
-        
-        axes[-1].set_xlabel('Time (s)', fontsize = label_fontsize)
-        
-        plt.tight_layout()
-        return axes
-
