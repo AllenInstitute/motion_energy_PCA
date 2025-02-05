@@ -144,14 +144,14 @@ class PCAgenerator:
 
         # Create spatial masks to visualize PCs
         print('Computing spatial masks...')
-        spatial_masks = self._compute_spatial_masks_in_chunks(pca_motion_energy, frames_me, standardize=True)
+        spatial_masks = self._compute_spatial_masks_in_chunks(pca_motion_energy, frames_me, start_index, standardize=True)
         print('Done.')
         self.spatial_masks = spatial_masks
 
         return ipca, pca_motion_energy
 
 
-    def _compute_spatial_masks_in_chunks(self, pcs, frames_me2, standardize=True):
+    def _compute_spatial_masks_in_chunks(self, pcs, frames_me2, start_index=0, standardize=True):
         """
         Compute spatial masks from principal components and motion energy.
 
@@ -163,6 +163,8 @@ class PCAgenerator:
             A Zarr array of shape (n_samples, height, width) representing motion energy data.
         standardize : bool, optional
             Whether to standardize the masks. Defaults to True.
+        start_index : int
+
 
         Returns:
         -------
@@ -180,38 +182,56 @@ class PCAgenerator:
             pc = pcs[:, i]
             mask_sum = None
             count = 0
+            print("Processing frames_me2 in chunks...")
 
-            # Iterate over chunks of frames_me2
-            for chunk_start in range(0, frames_me2.shape[0], self.chunk_size):
-                chunk_end = min(chunk_start + self.chunk_size, frames_me2.shape[0])
+            num_frames2 = frames_me2.shape[0]
+
+            for chunk_start in range(start_index, num_frames2, self.chunk_size):
+                chunk_end = min(chunk_start + self.chunk_size, num_frames2)
 
                 # Load the chunk from Zarr
                 chunk = frames_me2[chunk_start:chunk_end]
+
+                # If last chunk is too small, merge with previous chunk
+                if chunk_end >= num_frames2 - n_components:
+                    chunk = frames_me2[chunk_start:]  # Process the rest of the frames
+                    print(f"Processing last chunk, shape: {chunk.shape}")
 
                 # Apply the principal component to the chunk
                 chunk_masks = chunk * pc[chunk_start:chunk_end, np.newaxis, np.newaxis]
 
                 # Accumulate the sum of masks
-                if mask_sum is None:
-                    mask_sum = np.sum(chunk_masks, axis=0)
-                else:
-                    mask_sum += np.sum(chunk_masks, axis=0)
+                mask_sum = np.sum(chunk_masks, axis=0) if mask_sum is None else mask_sum + np.sum(chunk_masks, axis=0)
 
                 # Update the count
                 count += chunk_masks.shape[0]
 
-            # Compute the mean mask
-            mean_mask = mask_sum / count
+                # Break early if we processed the last chunk
+                if chunk_end >= num_frames2 - n_components:
+                    break
 
-            # Standardize the mask if required
-            if standardize:
-                mean = mean_mask.mean()
-                std = mean_mask.std()
-                mean_mask = (mean_mask - mean) / std
+                # Compute the mean mask
+                mean_mask = mask_sum / count
 
-            # Append the computed mean mask to the list
+                # Standardize the mask if required
+                if standardize:
+                    mean = mean_mask.mean()
+                    std = mean_mask.std()
+
+                    # Check for zero standard deviation
+                    if std == 0:
+                        raise ValueError("Standard deviation is zero, leading to division errors!")
+
+                    mean_mask = (mean_mask - mean) / std
+
+                    # Check for NaN values after standardization
+                    nan_count = np.isnan(mean_mask).sum()
+                    if nan_count > 0:
+                        print(f"Warning: Standardized mean mask contains {nan_count} NaN values.")
+
+                # Append the computed mean mask to the list
             spatial_masks.append(mean_mask)
-
+            print("Mean mask computed for {n} component.")
         return np.array(spatial_masks)
 
     def _plot_spatial_masks(self):
