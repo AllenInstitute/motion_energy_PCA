@@ -74,7 +74,7 @@ class PCAgenerator:
         print("Fitting PCA in chunks...")
 
         num_frames = frames_me.shape[0]
-        start_index = 70000 # for debugging
+        start_index = 30000 # for debugging
         print(f'starting at {start_index} frame.')
         for i in tqdm(range(start_index, num_frames, self.chunk_size)):
             chunk = frames_me[i:i + self.chunk_size]
@@ -89,7 +89,18 @@ class PCAgenerator:
             if self.standardize4PCA:
                 if i == start_index:  # Compute mean and std on the first processed chunk
                     mean, std = chunk_flattened.mean(axis=0), chunk_flattened.std(axis=0)
+
+                    # Check if mean and std are valid
+                    if np.any(np.isnan(mean)) or np.any(np.isnan(std)):
+                        raise ValueError("Mean or standard deviation contains NaN values!")
+                    if np.any(std == 0):
+                        raise ValueError("Standard deviation contains zero values, leading to division errors!")
+
                 chunk_flattened = (chunk_flattened - mean) / std
+                # Check for NaN values after standardization
+                nan_count = np.isnan(chunk_flattened).sum()
+                if nan_count > 0:
+                    print(f"Warning: Standardized data contains {nan_count} NaN values.")
 
             ipca.partial_fit(chunk_flattened)
 
@@ -113,6 +124,11 @@ class PCAgenerator:
 
             if self.standardize4PCA:
                 chunk_flattened = (chunk_flattened - mean) / std
+
+                # Check for NaN values after standardization
+                nan_count = np.isnan(chunk_flattened).sum()
+                if nan_count > 0:
+                    print(f"Warning: Standardized data contains {nan_count} NaN values.")
 
             transformed_chunks.append(ipca.transform(chunk_flattened))
 
