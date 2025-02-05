@@ -1,4 +1,9 @@
 
+import os
+import json
+import pickle
+from MotionEnergyAnalyzer import MotionEnergyAnalyzer
+
 def get_results_folder() -> str:
     """
     Retrieve the path to the results folder. Modify this function as needed to fit your project structure.
@@ -8,6 +13,79 @@ def get_results_folder() -> str:
     """
     # Placeholder implementation, update with actual results folder logic if needed
     return '/root/capsule/results'
+
+
+def find_files(root_dir: str, endswith = '', return_dir = True):
+    """
+    Recursively search for all Zarr files in the specified root directory
+    and save their paths to a JSON file.
+
+    Args:
+        root_dir (str): Root directory to search for Zarr files.
+
+    Returns:
+        list: List of paths to the found Zarr files.
+    """
+    collected_files = []
+
+    if return_dir:
+        # Walk through the directory tree
+        for root, dirs, files in os.walk(root_dir):
+            for dir_name in dirs:
+                if dir_name.endswith(endswith):
+                    collected_files.append(os.path.join(root, dir_name))
+    else: #return files
+        for root, _, files in os.walk(root_dir):
+            for file_name in files:
+                if file_name.endswith(endswith): 
+                    collected_files.append(os.path.join(root, file_name))
+
+    # # Save the paths to a JSON file
+    # with open(output_file, "w") as file:
+    #     json.dump(files, file, indent=4)
+
+    return collected_files
+
+
+def check_crop_region(pkl_file : str):
+    meta_obj = load()
+    if hasattr(meta_obj, 'crop_region'):
+        crop_region = meta_obj['crop_region']
+    else:
+        crop_region = None
+    return crop_region
+
+
+def load_pickle_file(file_path: str):
+    """
+    Load a pickle file from the given path and return the deserialized object.
+
+    Parameters:
+        file_path (str): The path to the pickle file.
+
+    Returns:
+        object: The Python object deserialized from the pickle file.
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        ValueError: If the file is not a valid pickle file or is corrupted.
+    """
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"The file at '{file_path}' does not exist.")
+    
+    try:
+        with open(file_path, 'rb') as file:
+            return pickle.load(file)
+    except (pickle.UnpicklingError, EOFError) as e:
+        raise ValueError(f"Error loading pickle file: {e}")
+
+
+def get_x_trace_sec(me_frames, fps=60):
+    x_trace_seconds = np.round(np.arange(1, frames.shape[0]) / fps, 2)
+    return x_trace_seconds
+
+
+####################### OLD FUNCTIONS
 
 def get_zarr_path(metadata: dict, path_to: str = 'motion_energy') -> str:
     """
@@ -26,7 +104,7 @@ def get_zarr_path(metadata: dict, path_to: str = 'motion_energy') -> str:
     # Create the directory if it doesn't exist
     os.makedirs(zarr_path, exist_ok=True)
 
-    filename = 'processed_frames_zarr' if path_to == 'gray_frames' else 'motion_energy_frames.zarr'
+    filename = 'processed_frames.zarr' if path_to == 'gray_frames' else 'motion_energy_frames.zarr'
     return os.path.join(zarr_path, filename)
 
 def get_data_path(metadata: dict) -> str:
@@ -63,27 +141,13 @@ def construct_zarr_folder(metadata: dict) -> str:
     except KeyError as e:
         raise KeyError(f"Missing required metadata field: {e}")
 
-
-def save_video(frames, video_path = '', video_name='motion_energy_clip.avi', fps=60, num_frames = 1000):
-    """
-    Save the provided frames to a video file using OpenCV.
-    """
+def get_fps(file_path):
+    meta = load_pickle_file(file_path)
+    for key, value in meta.loaded_metadata.items():
+        if "fps" in key.lower():
+            print(f"Found key: '{key}' with value: {value}")
+            return value
+    else:
+        print("fps not found.")
     
-    output_video_path = os.path.join(video_path, video_name)
-    # Get frame shape and number of frames
-    print(type(frames))
-    _, frame_height, frame_width = frames.shape
-
-    # Specify the codec and create the VideoWriter object
-    fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    out = cv2.VideoWriter(output_video_path, fourcc, fps, (frame_width, frame_height), isColor=False)
-
-    # Process and write each frame to the video file
-    for i in range(5000, num_frames+5000):
-        frame = frames[i].compute()  # Compute the frame to load it into memory
-        frame = frame.astype('uint8')  # Ensure the frame is of type uint8 for video
-        out.write(frame)  # Write the frame to the video file
-
-    # Release the video writer
-    out.release()
-    print(f"Video saved to '{output_video_path}'")
+    return None
