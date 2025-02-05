@@ -24,11 +24,13 @@ class PCAgenerator:
 
     def _define_crop_region(self, crop_region = None):
         #check metadata:
-        try:
-            crop_region = self.loaded_metadata['crop_region']
-    
         if crop_region is None:
-            crop_region=(100, 100, 200, 300)
+            try:
+                crop_region = self.loaded_metadata['crop_region']
+            except:
+                crop_region=(100, 100, 200, 300)
+                print(f'did not find crop region in the metadata.\ setting it to {crop_region}')
+
         # Unpack crop dimensions
         y, x, height, width = crop_region
         # Apply crop using slicing: [y:y+height, x:x+width]
@@ -70,43 +72,53 @@ class PCAgenerator:
 
         # Process data chunk by chunk
         print("Fitting PCA in chunks...")
-        start_index = 20000
-        for i in tqdm(range(start_index, frames_me.shape[0], self.chunk_size)):
+
+        num_frames = frames_me.shape[0]
+        start_index = 70000 # for debugging
+        print(f'starting at {start_index} frame.')
+        for i in tqdm(range(start_index, num_frames, self.chunk_size)):
             chunk = frames_me[i:i + self.chunk_size]
 
-            # check to make sure the last chunk is not too short 
-            # ideally chunk.shape[0] should be >= n_components
-            # which means that chunk_size should be >= n_components
-            next_chunk = frames_me[i + self.chunk_size:]
-            print(next_chunk.shape)
-            if next_chunk.shape[0] < n_components:
-                chunk = frames_me[i:] # get the rest of frames 
-                print(f'processing last chunk, shape: {chunk.shape}')
+            # If the remaining chunk is too small, merge it with the previous chunk
+            if i + self.chunk_size >= num_frames - n_components:
+                chunk = frames_me[i:]  # Process the rest of the frames
+                print(f'Processing last chunk, shape: {chunk.shape}')
 
             chunk_flattened = chunk.reshape(chunk.shape[0], -1)
 
-            # if self.standardize4PCA:
-            #     if i == 0:  # Compute mean and std on the first chunk
-            #         mean = chunk_flattened.mean(axis=0)
-            #         std = chunk_flattened.std(axis=0)
-            #     chunk_flattened = (chunk_flattened - mean) / std
-            
+            if self.standardize4PCA:
+                if i == start_index:  # Compute mean and std on the first processed chunk
+                    mean, std = chunk_flattened.mean(axis=0), chunk_flattened.std(axis=0)
+                chunk_flattened = (chunk_flattened - mean) / std
+
             ipca.partial_fit(chunk_flattened)
+
+            # If we processed the last chunk, break out of the loop
+            if i + self.chunk_size >= num_frames - n_components:
+                break
 
         print("PCA fitting complete.")
 
-        # Transform data in chunks
         print("Transforming data in chunks...")
         transformed_chunks = []
-        for i in range(start_index, frames_me.shape[0], self.chunk_size):
+
+        for i in range(start_index, num_frames, self.chunk_size):
             chunk = frames_me[i:i + self.chunk_size]
+
+            # Merge last small chunk if needed
+            if i + self.chunk_size >= num_frames - n_components:
+                chunk = frames_me[i:]  # Process the rest of the frames
+
             chunk_flattened = chunk.reshape(chunk.shape[0], -1)
 
             if self.standardize4PCA:
                 chunk_flattened = (chunk_flattened - mean) / std
 
-            transformed_chunk = ipca.transform(chunk_flattened)
-            transformed_chunks.append(transformed_chunk)
+            transformed_chunks.append(ipca.transform(chunk_flattened))
+
+            # Break early if we processed the last chunk
+            if i + self.chunk_size >= num_frames - n_components:
+                break
 
         # Combine transformed chunks into a single array
         pca_motion_energy = np.vstack(transformed_chunks)

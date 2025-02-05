@@ -2,7 +2,7 @@
 import os
 import json
 import pickle
-from MotionEnergyAnalyzer import MotionEnergyAnalyzer
+#from MotionEnergyAnalyzer import MotionEnergyAnalyzer
 
 def get_results_folder() -> str:
     """
