@@ -69,7 +69,8 @@ class PCAgenerator:
 
         # Process data chunk by chunk
         print("Fitting PCA in chunks...")
-        for i in tqdm(range(20000, frames_me.shape[0], self.chunk_size)):
+        start_index = 20000
+        for i in tqdm(range(start_index, frames_me.shape[0], self.chunk_size)):
             chunk = frames_me[i:i + self.chunk_size]
 
             # check to make sure the last chunk is not too short 
@@ -96,7 +97,7 @@ class PCAgenerator:
         # Transform data in chunks
         print("Transforming data in chunks...")
         transformed_chunks = []
-        for i in range(0, frames_me.shape[0], self.chunk_size):
+        for i in range(start_index, frames_me.shape[0], self.chunk_size):
             chunk = frames_me[i:i + self.chunk_size]
             chunk_flattened = chunk.reshape(chunk.shape[0], -1)
 
