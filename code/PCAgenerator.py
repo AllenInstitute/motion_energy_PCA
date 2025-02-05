@@ -11,10 +11,9 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 class PCAgenerator:
-    def __init__(self, motion_zarr_path: str, pkl_file : str, crop_region = None,
+    def __init__(self, motion_zarr_path: str, crop_region = None,
     standardize4PCA = True):
         self.motion_zarr_path = motion_zarr_path
-        self.pkl_file = pkl_file
         self.crop = True
         self.loaded_metadata = None
         self.crop_region = crop_region
@@ -25,11 +24,13 @@ class PCAgenerator:
 
     def _define_crop_region(self, crop_region = None):
         #check metadata:
-        crop_region = utils.check_crop_region(self.pkl_file)
+        try:
+            crop_region = self.loaded_metadata['crop_region']
+    
         if crop_region is None:
-            crop_region=(100, 100, 300, 200)
+            crop_region=(100, 100, 200, 300)
         # Unpack crop dimensions
-        x, y, width, height = crop_region
+        y, x, height, width = crop_region
         # Apply crop using slicing: [y:y+height, x:x+width]
         print(f"Crop region: x={x}, y={y}, width={width}, height={height}")
         self.crop_region=crop_region
@@ -246,7 +247,7 @@ class PCAgenerator:
         if axes is None:
             fig, axes = plt.subplots(len(component_indices), 1,figsize=(15,2*len(component_indices)))
         pca_motion_energy = self.pca_motion_energy
-        fps = utils.get_fps(self.pkl_file)
+        fps = self.loaded_metadata['fps']
         title_fontsize = 20
         label_fontsize = 16
         tick_fontsize = 14

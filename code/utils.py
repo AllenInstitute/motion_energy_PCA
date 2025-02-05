@@ -47,13 +47,13 @@ def find_files(root_dir: str, endswith = '', return_dir = True):
     return collected_files
 
 
-def check_crop_region(pkl_file : str):
-    meta_obj = load()
-    if hasattr(meta_obj, 'crop_region'):
-        crop_region = meta_obj['crop_region']
-    else:
-        crop_region = None
-    return crop_region
+# def check_crop_region(pkl_file : str):
+#     meta_obj = load()
+#     if hasattr(meta_obj, 'crop_region'):
+#         crop_region = meta_obj['crop_region']
+#     else:
+#         crop_region = None
+#     return crop_region
 
 
 def load_pickle_file(file_path: str):
