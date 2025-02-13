@@ -252,38 +252,38 @@ class PCAgenerator:
 
         return self
 
-        def _standardize_chunk(self, chunk_flattened, i):
-            """
-            Standardizes a given chunk for PCA processing.
+    def _standardize_chunk(self, chunk_flattened, i):
+        """
+        Standardizes a given chunk for PCA processing.
 
-            Parameters:
-            - chunk_flattened (numpy.ndarray): A 2D array where each row represents a sample.
-            - i (int): Current chunk index.
+        Parameters:
+        - chunk_flattened (numpy.ndarray): A 2D array where each row represents a sample.
+        - i (int): Current chunk index.
 
-            Returns:
-            - numpy.ndarray: Standardized chunk.
-            """
-            if self.standardize4PCA:
-                if i == self.start_index:
-                    # Compute mean and std on the first processed chunk
-                    self.mean = chunk_flattened.mean(axis=0)
-                    self.std = chunk_flattened.std(axis=0)
+        Returns:
+        - numpy.ndarray: Standardized chunk.
+        """
+        if self.standardize4PCA:
+            if i == self.start_index:
+                # Compute mean and std on the first processed chunk
+                self.mean = chunk_flattened.mean(axis=0)
+                self.std = chunk_flattened.std(axis=0)
 
-                    # Validate mean and std
-                    if np.any(np.isnan(self.mean)) or np.any(np.isnan(self.std)):
-                        raise ValueError("Mean or standard deviation contains NaN values!")
-                    if np.any(self.std == 0):
-                        raise ValueError("Standard deviation contains zero values, leading to division errors!")
+                # Validate mean and std
+                if np.any(np.isnan(self.mean)) or np.any(np.isnan(self.std)):
+                    raise ValueError("Mean or standard deviation contains NaN values!")
+                if np.any(self.std == 0):
+                    raise ValueError("Standard deviation contains zero values, leading to division errors!")
 
-                # Standardize the chunk
-                chunk_flattened = (chunk_flattened - self.mean) / self.std
+            # Standardize the chunk
+            chunk_flattened = (chunk_flattened - self.mean) / self.std
 
-                # Check for NaN values after standardization
-                nan_count = np.isnan(chunk_flattened).sum()
-                if nan_count > 0:
-                    print(f"Warning: Standardized data contains {nan_count} NaN values.")
+            # Check for NaN values after standardization
+            nan_count = np.isnan(chunk_flattened).sum()
+            if nan_count > 0:
+                print(f"Warning: Standardized data contains {nan_count} NaN values.")
 
-            return chunk_flattened
+        return chunk_flattened
 
     def _standardize_mean_mask(self, mean_mask):
         """
@@ -363,7 +363,7 @@ class PCAgenerator:
 
         return fig
 
-    def _plot_pca_components_traces(self, component_indices=[0, 1, 2], axes=None):
+    def _plot_pca_components_traces(self, component_indices=[0, 1, 2], remove_outliers = True, axes=None):
         """
         Plots 3 PCA components from pca_motion_energy against x_trace_seconds.
 
@@ -381,20 +381,52 @@ class PCAgenerator:
             raise ValueError("pca_motion_energy must have at least 3 components to plot.")
         
         x_range = 10000
-        
-        x_trace_seconds = np.round(np.arange(1, x_range) / fps, 2)
+        x_trace_seconds = np.round(np.arange(100, x_range) / fps, 2)
+
         for i, ax in enumerate(axes):
-            ax.plot(x_trace_seconds, pca_motion_energy[np.arange(1, x_range), component_indices[i]])
+            pc_trace = pca_motion_energy[np.arange(0, x_range), component_indices[i]]
+            if remove_outliers:
+                pc_trace = utils.remove_outliers_99(pc_trace)
+
+            assert len(x_trace_seconds)==len(pc_trace), 'timestamps and pc trace are different length'
+            ax.plot(x_trace_seconds, pc_trace)
             ax.set_ylabel(f'PCA {component_indices[i] + 1}', fontsize = label_fontsize)
             ax.set_title(f'PCA {component_indices[i] + 1} over time (s)', fontsize = title_fontsize)
             ax.tick_params(axis='both', which='major', labelsize=tick_fontsize)
             ax.grid(True)
         
         axes[-1].set_xlabel('Time (s)', fontsize = label_fontsize)
-        
         plt.tight_layout()
-        return axes
+        return fig
 
+    def _crop_frames(me_pca, frames_me):
+            """
+            Crops the input frames based on the defined crop region.
+            
+            Parameters:
+            - frames_me (numpy.ndarray): 3D array of frames with shape (num_frames, height, width)
+            
+            Returns:
+            - numpy.ndarray: Cropped frames
+            - int: Cropped height
+            - int: Cropped width
+            """
+            crop_y_start, crop_x_start, crop_y_end, crop_x_end = me_pca.crop_region
+            frames_me = frames_me[:, crop_y_start:crop_y_end, crop_x_start:crop_x_end]
+            H = crop_y_end - crop_y_start
+            W = crop_x_end - crop_x_start
+            return frames_me, H, W
+
+    def _save_results(self):
+        print('saving results')
+        top_results_folder = utils.construct_results_folder(self.loaded_metadata)
+        self.top_results_path = os.path.join(utils.get_results_path(), top_results_folder)
+
+        # Save the object to a file
+        filename = {}
+        with open("fit_motion_energy_pca.pkl", "wb") as f:
+            pickle.dump(utils.object_to_dict(self), f)
+        return self
 
 ## extra
  
@@ -486,11 +518,7 @@ class PCAgenerator:
         self.spatial_masks = spatial_masks
         return pca, pca_motion_energy
 
-    def _save_results(self):
-
-        top_results_folder = utils.construct_results_folder(self.loaded_metadata)
-        top_results_path = os.path.join(utils.get_results_path(), top_results_folder)
-
+ 
 
 
 

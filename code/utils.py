@@ -2,6 +2,7 @@
 import os
 import json
 import pickle
+import numpy as np
 #from MotionEnergyAnalyzer import MotionEnergyAnalyzer
 
 def find_files(root_dir: str, endswith = '', return_dir = True):
@@ -84,9 +85,9 @@ def get_results_path() -> str:
     # Placeholder implementation, update with actual results folder logic if needed
     return '/root/capsule/results'
 
-def construct_zarr_folder(metadata: dict) -> str:
+def construct_results_folder(metadata: dict) -> str:
     """
-    Construct the folder name for Zarr storage based on metadata.
+    Construct the folder name for results storage based on metadata.
 
     Args:
         metadata (dict): A dictionary containing 'mouse_id', 'camera_label', and 'data_asset_id'.
@@ -114,6 +115,38 @@ def remove_outliers_99(arr):
     return arr[arr <= threshold]  # Keep only values below or equal to the threshold
 
     print(f"Original size: {data.size}, Filtered size: {filtered_data.size}")
+
+    import matplotlib.pyplot as plt
+import os
+
+def save_figure(fig, save_path, fig_name, dpi=300, bbox_inches="tight", transparent=False):
+    """
+    Saves a Matplotlib figure to the specified path.
+
+    Parameters:
+    - fig (matplotlib.figure.Figure): The figure to save.
+    - save_path (str): The file path (including extension) to save the figure.
+    - fig_name (str)
+    - dpi (int, optional): Dots per inch (default: 300 for high resolution).
+    - bbox_inches (str, optional): Bounding box to trim white space (default: "tight").
+    - transparent (bool, optional): Whether to save with a transparent background (default: False).
+    
+    Returns:
+    - None
+    """
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)  # Ensure directory exists
+    fig.savefig(save_path, dpi=dpi, bbox_inches=bbox_inches, transparent=transparent)
+    print(f"Figure saved at: {save_path}")
+
+def object_to_dict(obj):
+    if hasattr(obj, "__dict__"):
+        return {key: object_to_dict(value) for key, value in vars(obj).items()}
+    elif isinstance(obj, list):
+        return [object_to_dict(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {key: object_to_dict(value) for key, value in obj.items()}
+    else:
+        return obj
 
 ####################### OLD FUNCTIONS
 
