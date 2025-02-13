@@ -119,7 +119,7 @@ def remove_outliers_99(arr):
     import matplotlib.pyplot as plt
 import os
 
-def save_figure(fig, save_path, fig_name, dpi=300, bbox_inches="tight", transparent=False):
+def save_figure(fig, save_path, fig_name, dpi=300, bbox_inches="tight", transparent=True):
     """
     Saves a Matplotlib figure to the specified path.
 
@@ -129,13 +129,14 @@ def save_figure(fig, save_path, fig_name, dpi=300, bbox_inches="tight", transpar
     - fig_name (str)
     - dpi (int, optional): Dots per inch (default: 300 for high resolution).
     - bbox_inches (str, optional): Bounding box to trim white space (default: "tight").
-    - transparent (bool, optional): Whether to save with a transparent background (default: False).
+    - transparent (bool, optional): Whether to save with a transparent background (default: True).
     
     Returns:
     - None
     """
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)  # Ensure directory exists
-    fig.savefig(save_path, dpi=dpi, bbox_inches=bbox_inches, transparent=transparent)
+    figpath = save_path+'/'+fig_name
+    os.makedirs(os.path.dirname(figpath), exist_ok=True)  # Ensure directory exists
+    fig.savefig(figpath, dpi=dpi, bbox_inches=bbox_inches, transparent=transparent)
     print(f"Figure saved at: {save_path}")
 
 def object_to_dict(obj):

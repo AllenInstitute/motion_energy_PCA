@@ -338,7 +338,7 @@ class PCAgenerator:
         fig : matplotlib.figure.Figure
             The figure object containing the plot of explained variance.
         """
-        fig = plt.figure(figsize=(4,2))
+        fig = plt.figure(figsize=(4,3))
         fontsize=12
         # Check if pca has been fitted
         pca = self.pca
