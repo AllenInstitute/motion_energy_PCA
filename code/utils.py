@@ -4,17 +4,6 @@ import json
 import pickle
 #from MotionEnergyAnalyzer import MotionEnergyAnalyzer
 
-def get_results_folder() -> str:
-    """
-    Retrieve the path to the results folder. Modify this function as needed to fit your project structure.
-
-    Returns:
-        str: Path to the results folder.
-    """
-    # Placeholder implementation, update with actual results folder logic if needed
-    return '/root/capsule/results'
-
-
 def find_files(root_dir: str, endswith = '', return_dir = True):
     """
     Recursively search for all Zarr files in the specified root directory
@@ -56,6 +45,7 @@ def find_files(root_dir: str, endswith = '', return_dir = True):
 #     return crop_region
 
 
+
 def load_pickle_file(file_path: str):
     """
     Load a pickle file from the given path and return the deserialized object.
@@ -84,6 +74,46 @@ def get_x_trace_sec(me_frames, fps=60):
     x_trace_seconds = np.round(np.arange(1, frames.shape[0]) / fps, 2)
     return x_trace_seconds
 
+def get_results_path() -> str:
+    """
+    Retrieve the path to the results folder. Modify this function as needed to fit your project structure.
+
+    Returns:
+        str: Path to the results folder.
+    """
+    # Placeholder implementation, update with actual results folder logic if needed
+    return '/root/capsule/results'
+
+def construct_zarr_folder(metadata: dict) -> str:
+    """
+    Construct the folder name for Zarr storage based on metadata.
+
+    Args:
+        metadata (dict): A dictionary containing 'mouse_id', 'camera_label', and 'data_asset_id'.
+
+    Returns:
+        str: Constructed folder name.
+    """
+    try:
+        return f"{metadata['mouse_id']}_{metadata['camera_label']}_{metadata['data_asset_id']}"
+    except KeyError as e:
+        raise KeyError(f"Missing required metadata field: {e}")
+
+
+def remove_outliers_99(arr):
+    """
+    Removes outliers above the 99th percentile in a NumPy array.
+
+    Parameters:
+    - arr (numpy.ndarray): Input array.
+
+    Returns:
+    - numpy.ndarray: Array with outliers removed (values above 99th percentile).
+    """
+    threshold = np.percentile(arr, 99)  # Compute the 99th percentile
+    return arr[arr <= threshold]  # Keep only values below or equal to the threshold
+
+    print(f"Original size: {data.size}, Filtered size: {filtered_data.size}")
 
 ####################### OLD FUNCTIONS
 
