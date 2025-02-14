@@ -27,8 +27,6 @@ def run():
         fig = me_pca._plot_spatial_masks()
         utils.save_figure(fig, save_path=me_pca.top_results_path, fig_name = 'pca_spatial_masks.npg', dpi=300, bbox_inches="tight", transparent=False)
 
-        fig = me_pca._plot_pca_components_traces()
-        utils.save_figure(fig, save_path=me_pca.top_results_path, fig_name = 'pca_components_traces.npg', dpi=300, bbox_inches="tight", transparent=False)
 
         fig = me_pca._plot_explained_variance()
         utils.save_figure(fig, save_path=me_pca.top_results_path, fig_name = 'pca_explained_variance.npg', dpi=300, bbox_inches="tight", transparent=False)
@@ -36,6 +34,11 @@ def run():
         fig = me_pca._plot_motion_energy_trace()
         utils.save_figure(fig, save_path=me_pca.top_results_path, fig_name = 'motion_energy_trace.npg', dpi=300, bbox_inches="tight", transparent=False)
 
+        try:
+            fig = me_pca._plot_pca_components_traces()
+            utils.save_figure(fig, save_path=me_pca.top_results_path, fig_name = 'pca_components_traces.npg', dpi=300, bbox_inches="tight", transparent=False)
+        except:
+            print('couldnt plot pca traces')
     
         end_time = time.time()  # End the timer
         duration = end_time - start_time

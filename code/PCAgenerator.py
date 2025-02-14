@@ -448,7 +448,7 @@ class PCAgenerator:
 
         fps = self.loaded_metadata.get('fps', 60)  # Default FPS to 60 if missing
         x_range = min(10000, self.pca_motion_energy.shape[0])  # Ensure range doesn't exceed available data
-        x_trace_seconds = np.round(np.arange(100, x_range) / fps, 2)
+        x_trace_seconds = np.round(np.arange(0, x_range) / fps, 2)
 
         if axes is None:
             fig, axes = plt.subplots(len(component_indices), 1, figsize=(15, 2 * len(component_indices)))
