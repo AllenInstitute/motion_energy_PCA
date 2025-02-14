@@ -21,7 +21,8 @@ RUN pip3 install -U --no-cache-dir \
 	aind-codeocean-api \
     aind-codeocean-utils \
     pyyaml \
-	dask_ml
+	dask_ml \
+	pytest
 
 RUN cd /.code-server \
 	&& tar -xvf code-server.tar.gz \
