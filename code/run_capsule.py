@@ -16,7 +16,7 @@ def run():
         me_pca = PCAgenerator(zarr_path, npz_path, crop=True, crop_region=crop_region, standardize4PCA=False, standardizeMasks=True) 
         
         me_pca, post_crop_frames_me = me_pca._apply_pca_to_motion_energy_without_dask()
-        
+
         me_pca._save_results()
 
         me_pca._add_spatial_masks(me_pca.pca_motion_energy, post_crop_frames_me)
@@ -27,15 +27,16 @@ def run():
         fig = me_pca._plot_spatial_masks()
         utils.save_figure(fig, save_path=me_pca.top_results_path, fig_name = 'pca_spatial_masks.npg', dpi=300, bbox_inches="tight", transparent=False)
 
-        fig = me_pca._plot_pca_components_traces()
-        utils.save_figure(fig, save_path=me_pca.top_results_path, fig_name = 'pca_components_traces.npg', dpi=300, bbox_inches="tight", transparent=False)
-
         fig = me_pca._plot_explained_variance()
         utils.save_figure(fig, save_path=me_pca.top_results_path, fig_name = 'pca_explained_variance.npg', dpi=300, bbox_inches="tight", transparent=False)
 
         fig = me_pca._plot_motion_energy_trace()
         utils.save_figure(fig, save_path=me_pca.top_results_path, fig_name = 'motion_energy_trace.npg', dpi=300, bbox_inches="tight", transparent=False)
-
+        try:
+            fig = me_pca._plot_pca_components_traces()
+            utils.save_figure(fig, save_path=me_pca.top_results_path, fig_name = 'pca_components_traces.npg', dpi=300, bbox_inches="tight", transparent=False)
+        except:
+            print('couldnt plot pca traces')
     
         end_time = time.time()  # End the timer
         duration = end_time - start_time
