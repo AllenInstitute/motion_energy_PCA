@@ -17,6 +17,8 @@ def run():
         
         me_pca, post_crop_frames_me = me_pca._apply_pca_to_motion_energy_without_dask()
 
+        me_pca._save_results()
+
         me_pca._add_spatial_masks(me_pca.pca_motion_energy, post_crop_frames_me)
 
         me_pca._save_results()
