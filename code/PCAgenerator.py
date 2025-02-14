@@ -22,7 +22,7 @@ class PCAgenerator:
     including cropping, standardization, and chunk-wise processing.
     """
 
-    def __init__(self, motion_zarr_path: str, crop: bool = None, crop_region: tuple = None,
+    def __init__(self, motion_zarr_path: str, npz_path: str, crop: bool = None, crop_region: tuple = None,
                  standardize4PCA: bool = True, standardizeMasks: bool = False):
         """
         Initialize PCA Generator.
@@ -35,6 +35,7 @@ class PCAgenerator:
             standardizeMasks (bool, optional): If True, standardizes masks when plotting. Defaults to False.
         """
         self.motion_zarr_path = motion_zarr_path
+        self.npz_path = npz_path
         self.crop = crop
         self.crop_region = crop_region
         self.n_components = 100  # Number of PCA components
@@ -469,13 +470,11 @@ class PCAgenerator:
         plt.tight_layout()
         return fig
 
-    def _plot_motion_energy_trace(self, npz_path: str, remove_outliers: bool = True) -> plt.Figure:
+    def _plot_motion_energy_trace(self, remove_outliers: bool = True) -> plt.Figure:
         """
         Creates a figure and plots a NumPy array from an NPZ file.
 
         Args:
-            npz_data (dict): Dictionary containing NumPy arrays.
-            array_name (str, optional): Name of the array to plot. Defaults to the first available array.
 
         Returns:
             plt.Figure: The matplotlib figure object.
@@ -483,7 +482,7 @@ class PCAgenerator:
         Raises:
             ValueError: If the specified array name is not found.
         """
-        npz_data = np.load(npz_path)
+        npz_data = np.load(self.npz_path)
 
         if not npz_data:
             raise ValueError("No data found in the NPZ file.")
