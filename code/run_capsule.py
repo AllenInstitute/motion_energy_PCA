@@ -10,7 +10,7 @@ npz_paths = utils.find_files(root_dir = '/root/capsule/data', endswith='.npz', r
 assert len(zarr_paths) == len(npz_paths), 'zarr files and npz files are misaligned'
 
 def run():
-    for zarr_path, znp_path in zip(zarr_paths, npz_paths):
+    for zarr_path, npz_path in zip(zarr_paths, npz_paths):
         start_time = time.time()  # Start the timer
 
         me_pca = PCAgenerator(zarr_path, npz_path, crop=True, crop_region=(250, 300,  400, 500), standardize4PCA=False, standardizeMasks=True) 
