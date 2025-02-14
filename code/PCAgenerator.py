@@ -258,7 +258,7 @@ class PCAgenerator:
 
             # Process frames in chunks
             for i in tqdm(range(self.start_index, num_frames, self.chunk_size), desc=f"PC {pc_index + 1}"):
-                pc_i = i - 1  # Adjust index since PC has one less frame
+                pc_i = i  # Adjust index since PC has one less frame
                 chunk = post_crop_frames_me[i:i + self.chunk_size]
                 pc_chunk = pc[pc_i:pc_i + self.chunk_size, np.newaxis, np.newaxis]
 
