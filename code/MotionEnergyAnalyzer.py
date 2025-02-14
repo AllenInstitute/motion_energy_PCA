@@ -8,6 +8,8 @@ import os
 import utils
 import pickle
 
+# this is here for some reason. I think it's needed but dont remember why. 
+
 class MotionEnergyAnalyzer:
     def __init__(self, frame_zarr_path: str):
         self.frame_zarr_path = frame_zarr_path
