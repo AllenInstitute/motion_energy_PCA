@@ -43,7 +43,7 @@ class PCAgenerator:
         self.standardize4PCA = standardize4PCA
         self.standardizeMasks = standardizeMasks
         self.chunk_size = 100
-        self.start_index = 1  # Drop first frame (assumed noise)
+        self.start_index = 0  # First frame with data info should have been dropped when me was computed
         self.mean = None
         self.std = None
 

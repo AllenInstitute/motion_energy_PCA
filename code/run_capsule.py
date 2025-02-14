@@ -14,8 +14,10 @@ def run():
         start_time = time.time()  # Start the timer
 
         me_pca = PCAgenerator(zarr_path, npz_path, crop=True, crop_region=(250, 300,  400, 500), standardize4PCA=False, standardizeMasks=True) 
+        
         me_pca, post_crop_frames_me = me_pca._apply_pca_to_motion_energy_without_dask()
-        pca_me._add_spatial_masks(me_pca.pca_motion_energy, post_crop_frames_me)
+
+        me_pca._add_spatial_masks(me_pca.pca_motion_energy, post_crop_frames_me)
 
         me_pca._save_results()
         
