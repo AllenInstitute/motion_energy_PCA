@@ -10,7 +10,7 @@ crop_region = (200, 290, 280, 360)
 assert len(zarr_paths) == len(npz_paths), 'zarr files and npz files are misaligned'
 
 def run():
-    for zarr_path, npz_path in zip(zarr_paths, npz_paths):
+    for zarr_path, npz_path in zip(zarr_paths[1:], npz_paths[1:]):
         start_time = time.time()  # Start the timer
 
         me_pca = PCAgenerator(zarr_path, npz_path, crop=True, crop_region=crop_region, standardize4PCA=False, standardizeMasks=True) 
@@ -25,16 +25,16 @@ def run():
         
         #plot and save fig
         fig = me_pca._plot_spatial_masks()
-        utils.save_figure(fig, save_path=me_pca.top_results_path, fig_name = 'pca_spatial_masks.npg', dpi=300, bbox_inches="tight", transparent=False)
+        utils.save_figure(fig, save_path=me_pca.top_results_path, fig_name = 'pca_spatial_masks.png', dpi=300, bbox_inches="tight", transparent=False)
 
         fig = me_pca._plot_explained_variance()
-        utils.save_figure(fig, save_path=me_pca.top_results_path, fig_name = 'pca_explained_variance.npg', dpi=300, bbox_inches="tight", transparent=False)
+        utils.save_figure(fig, save_path=me_pca.top_results_path, fig_name = 'pca_explained_variance.png', dpi=300, bbox_inches="tight", transparent=False)
 
         fig = me_pca._plot_motion_energy_trace()
-        utils.save_figure(fig, save_path=me_pca.top_results_path, fig_name = 'motion_energy_trace.npg', dpi=300, bbox_inches="tight", transparent=False)
+        utils.save_figure(fig, save_path=me_pca.top_results_path, fig_name = 'motion_energy_trace.png', dpi=300, bbox_inches="tight", transparent=False)
         try:
             fig = me_pca._plot_pca_components_traces()
-            utils.save_figure(fig, save_path=me_pca.top_results_path, fig_name = 'pca_components_traces.npg', dpi=300, bbox_inches="tight", transparent=False)
+            utils.save_figure(fig, save_path=me_pca.top_results_path, fig_name = 'pca_components_traces.png', dpi=300, bbox_inches="tight", transparent=False)
         except:
             print('couldnt plot pca traces')
     
