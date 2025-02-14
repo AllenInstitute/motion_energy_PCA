@@ -6,14 +6,14 @@ from PCAgenerator import PCAgenerator
 
 zarr_paths = utils.find_files(root_dir = '/root/capsule/data', endswith='zarr')
 npz_paths = utils.find_files(root_dir = '/root/capsule/data', endswith='.npz', return_dir=False)
-
+crop_region = (200, 290, 280, 360)
 assert len(zarr_paths) == len(npz_paths), 'zarr files and npz files are misaligned'
 
 def run():
     for zarr_path, npz_path in zip(zarr_paths, npz_paths):
         start_time = time.time()  # Start the timer
 
-        me_pca = PCAgenerator(zarr_path, npz_path, crop=True, crop_region=(250, 300,  400, 500), standardize4PCA=False, standardizeMasks=True) 
+        me_pca = PCAgenerator(zarr_path, npz_path, crop=True, crop_region=crop_region, standardize4PCA=False, standardizeMasks=True) 
         
         me_pca, post_crop_frames_me = me_pca._apply_pca_to_motion_energy_without_dask()
 

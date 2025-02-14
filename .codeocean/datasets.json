@@ -2,8 +2,8 @@
 	"version": 1,
 	"attached_datasets": [
 		{
-			"id": "e939c429-cacf-4916-9754-c96a1590fa39",
-			"mount": "749315_nose_motion_energy"
+			"id": "90a3f0a5-a652-4268-a1ae-6b8a2fdcf63a",
+			"mount": "Thyme_736963_Face_zarr_motion_energy"
 		}
 	]
 }
