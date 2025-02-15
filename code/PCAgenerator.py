@@ -22,7 +22,7 @@ class PCAgenerator:
     including cropping, standardization, and chunk-wise processing.
     """
 
-    def __init__(self, motion_zarr_path: str, crop: bool = None, crop_region: tuple = None,
+    def __init__(self, motion_zarr_path: str, npz_path: str, crop: bool = None, crop_region: tuple = None,
                  standardize4PCA: bool = True, standardizeMasks: bool = False):
         """
         Initialize PCA Generator.
@@ -35,6 +35,7 @@ class PCAgenerator:
             standardizeMasks (bool, optional): If True, standardizes masks when plotting. Defaults to False.
         """
         self.motion_zarr_path = motion_zarr_path
+        self.npz_path = npz_path
         self.crop = crop
         self.crop_region = crop_region
         self.n_components = 100  # Number of PCA components
@@ -42,13 +43,15 @@ class PCAgenerator:
         self.standardize4PCA = standardize4PCA
         self.standardizeMasks = standardizeMasks
         self.chunk_size = 100
-        self.start_index = 1  # Drop first frame (assumed noise)
+        self.start_index = 0  # First frame with data info should have been dropped when me was computed
         self.mean = None
         self.std = None
 
         self._load_metadata()
         if crop is None:
             self.crop = self.loaded_metadata.get('crop', False)
+        
+        self._get_motion_energy_trace()
 
     def _load_metadata(self) -> None:
         """Load metadata from the Zarr store."""
@@ -257,7 +260,7 @@ class PCAgenerator:
 
             # Process frames in chunks
             for i in tqdm(range(self.start_index, num_frames, self.chunk_size), desc=f"PC {pc_index + 1}"):
-                pc_i = i - 1  # Adjust index since PC has one less frame
+                pc_i = i  # Adjust index since PC has one less frame
                 chunk = post_crop_frames_me[i:i + self.chunk_size]
                 pc_chunk = pc[pc_i:pc_i + self.chunk_size, np.newaxis, np.newaxis]
 
@@ -423,7 +426,7 @@ class PCAgenerator:
         return fig
 
 
-    def _plot_pca_components_traces(self, component_indices: list = [0, 1, 2], remove_outliers: bool = True, axes=None) -> plt.Figure:
+    def _plot_pca_components_traces(self, component_indices: list = [0, 1, 2], remove_outliers: bool = False, axes=None) -> plt.Figure:
         """
         Plots PCA components against time.
 
@@ -447,7 +450,7 @@ class PCAgenerator:
 
         fps = self.loaded_metadata.get('fps', 60)  # Default FPS to 60 if missing
         x_range = min(10000, self.pca_motion_energy.shape[0])  # Ensure range doesn't exceed available data
-        x_trace_seconds = np.round(np.arange(100, x_range) / fps, 2)
+        x_trace_seconds = np.round(np.arange(0, x_range) / fps, 2)
 
         if axes is None:
             fig, axes = plt.subplots(len(component_indices), 1, figsize=(15, 2 * len(component_indices)))
@@ -469,21 +472,8 @@ class PCAgenerator:
         plt.tight_layout()
         return fig
 
-    def _plot_motion_energy_trace(self, npz_path: str, remove_outliers: bool = True) -> plt.Figure:
-        """
-        Creates a figure and plots a NumPy array from an NPZ file.
-
-        Args:
-            npz_data (dict): Dictionary containing NumPy arrays.
-            array_name (str, optional): Name of the array to plot. Defaults to the first available array.
-
-        Returns:
-            plt.Figure: The matplotlib figure object.
-
-        Raises:
-            ValueError: If the specified array name is not found.
-        """
-        npz_data = np.load(npz_path)
+    def _get_motion_energy_trace(self):
+            npz_data = np.load(self.npz_path)
 
         if not npz_data:
             raise ValueError("No data found in the NPZ file.")
@@ -494,8 +484,28 @@ class PCAgenerator:
             raise ValueError(f"Array '{array_name}' not found in the NPZ file. Available arrays: {list(npz_data.keys())}")
 
         array = npz_data[array_name]
+
+        self.motion_energy_trace = array
+        return self
+        
+
+    def _plot_motion_energy_trace(self, remove_outliers: bool = True) -> plt.Figure:
+        """
+        Creates a figure and plots a NumPy array from an NPZ file.
+
+        Args:
+
+        Returns:
+            plt.Figure: The matplotlib figure object.
+
+        Raises:
+            ValueError: If the specified array name is not found.
+        """
+
         if remove_outliers:
-            array = utils.remove_outliers_99(array)
+            array = utils.remove_outliers_99(self.array)
+        else:
+            self.array
 
         fig, ax = plt.subplots(figsize=(15, 6))
         ax.plot(array, label=f"{array_name}")
