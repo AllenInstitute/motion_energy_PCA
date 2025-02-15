@@ -1,408 +1,538 @@
+import os
+import json
+import pickle
 import numpy as np
 import zarr
-import dask
-import dask.array as da
-import json
-import os
-import utils
-from sklearn.decomposition import PCA
-from sklearn.decomposition import IncrementalPCA
-import matplotlib.pyplot as plt
 from tqdm import tqdm
+from sklearn.decomposition import IncrementalPCA
+import logging
+import utils
+import matplotlib.pyplot as plt
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 class PCAgenerator:
-    def __init__(self, motion_zarr_path: str, pkl_file : str, crop_region = None,
-    standardize4PCA = True):
-        self.motion_zarr_path = motion_zarr_path
-        self.pkl_file = pkl_file
-        self.crop = True
-        self.loaded_metadata = None
-        self.crop_region = crop_region
-        self.n_components = 100 # to fit PCA
-        self.n_to_plot = 3 # to show
-        self.standardize4PCA = standardize4PCA
-        self.chunk_size = 100
+    """
+    PCA Generator for motion energy data.
 
-    def _define_crop_region(self, crop_region = None):
-        #check metadata:
-        crop_region = utils.check_crop_region(self.pkl_file)
+    This class applies PCA to motion energy frames stored in a Zarr dataset,
+    including cropping, standardization, and chunk-wise processing.
+    """
+
+    def __init__(self, motion_zarr_path: str, crop: bool = None, crop_region: tuple = None,
+                 standardize4PCA: bool = True, standardizeMasks: bool = False):
+        """
+        Initialize PCA Generator.
+
+        Args:
+            motion_zarr_path (str): Path to the Zarr dataset containing motion energy frames.
+            crop (bool, optional): Whether to crop frames before PCA. Defaults to None.
+            crop_region (tuple, optional): Crop region as (y_start, x_start, y_end, x_end).
+            standardize4PCA (bool, optional): If True, standardizes frames before PCA. Defaults to True.
+            standardizeMasks (bool, optional): If True, standardizes masks when plotting. Defaults to False.
+        """
+        self.motion_zarr_path = motion_zarr_path
+        self.crop = crop
+        self.crop_region = crop_region
+        self.n_components = 100  # Number of PCA components
+        self.n_to_plot = 3  # Number of components to visualize
+        self.standardize4PCA = standardize4PCA
+        self.standardizeMasks = standardizeMasks
+        self.chunk_size = 100
+        self.start_index = 1  # Drop first frame (assumed noise)
+        self.mean = None
+        self.std = None
+
+        self._load_metadata()
+        if crop is None:
+            self.crop = self.loaded_metadata.get('crop', False)
+
+    def _load_metadata(self) -> None:
+        """Load metadata from the Zarr store."""
+        root_group = zarr.open_group(self.motion_zarr_path, mode='r')
+        self.loaded_metadata = json.loads(root_group.attrs['metadata'])
+        logger.info("Metadata loaded successfully.")
+
+    def _define_crop_region(self, crop_region: tuple = None) -> None:
+        """Define and validate the crop region."""
         if crop_region is None:
-            crop_region=(100, 100, 300, 200)
-        # Unpack crop dimensions
-        x, y, width, height = crop_region
-        # Apply crop using slicing: [y:y+height, x:x+width]
-        print(f"Crop region: x={x}, y={y}, width={width}, height={height}")
-        self.crop_region=crop_region
-        return self
+            crop_region = self.loaded_metadata.get('crop_region', (100, 100, 200, 300))
+            logger.warning(f"Crop region not found in metadata, defaulting to {crop_region}")
+
+        y, x, height, width = crop_region
+        logger.info(f"Using crop region: x={x}, y={y}, width={width}, height={height}")
+        self.crop_region = crop_region
 
     def _apply_pca_to_motion_energy_without_dask(self):
-        """Apply PCA to the motion energy."""
-        # Open the Zarr store and load the 'data' array
+        """
+        Apply PCA to motion energy frames.
+
+        Returns:
+            tuple: (PCA model, transformed PCA motion energy, cropped frames).
+        """
+        # Load motion energy frames from Zarr
         me_store = zarr.DirectoryStore(self.motion_zarr_path)
         zarr_group = zarr.open(me_store, mode='r')
         frames_me = zarr_group['data']
-        print(f'Loaded frames {frames_me.shape}')
+        logger.info(f"Loaded motion energy frames with shape {frames_me.shape}")
 
-        # Determine the number of components
-        n_components = self.n_components if self.n_components is not None else 100
+        # Define PCA components
+        n_components = self.n_components or 100
 
-        # Crop frames if needed
+        # Apply cropping if needed
         if self.crop:
             if self.crop_region is None:
                 self._define_crop_region()
-            print(f'Applying crop to ME frames {self.crop_region}')
             crop_y_start, crop_x_start, crop_y_end, crop_x_end = self.crop_region
             frames_me = frames_me[:, crop_y_start:crop_y_end, crop_x_start:crop_x_end]
-            H = crop_y_end - crop_y_start
-            W = crop_x_end - crop_x_start
-        else:
-            H, W = frames_me.shape[1:]
+
+        # Standardize if required (see below)
+        if self.standardize4PCA:
+            logger.info("Standardizing data before PCA.")
+            
+        num_frames = frames_me.shape[0]
+        logger.info(f"Processing {num_frames - self.start_index} frames, starting at frame {self.start_index}.")
 
         # Initialize Incremental PCA
         ipca = IncrementalPCA(n_components=n_components)
 
-        # Standardize if required
-        if self.standardize4PCA:
-            print("Standardizing data...")
-            mean = np.zeros(H * W)
-            std = np.zeros(H * W)
-
-        # Process data chunk by chunk
-        print("Fitting PCA in chunks...")
-        for i in tqdm(range(20000, frames_me.shape[0], self.chunk_size)):
+        # Fit PCA in chunks
+        for i in tqdm(range(self.start_index, num_frames, self.chunk_size), desc="Fitting PCA"):
             chunk = frames_me[i:i + self.chunk_size]
 
-            # check to make sure the last chunk is not too short 
-            # ideally chunk.shape[0] should be >= n_components
-            # which means that chunk_size should be >= n_components
-            next_chunk = frames_me[i + self.chunk_size:]
-            print(next_chunk.shape)
-            if next_chunk.shape[0] < n_components:
-                chunk = frames_me[i:] # get the rest of frames 
-                print(f'processing last chunk, shape: {chunk.shape}')
+            # If the last chunk is too small, include the remaining frames
+            if i + self.chunk_size >= num_frames - n_components:
+                chunk = frames_me[i:]
+                logger.info(f"Processing last chunk with shape {chunk.shape}")
 
-            chunk_flattened = chunk.reshape(chunk.shape[0], -1)
-
-            # if self.standardize4PCA:
-            #     if i == 0:  # Compute mean and std on the first chunk
-            #         mean = chunk_flattened.mean(axis=0)
-            #         std = chunk_flattened.std(axis=0)
-            #     chunk_flattened = (chunk_flattened - mean) / std
-            
-            ipca.partial_fit(chunk_flattened)
-
-        print("PCA fitting complete.")
-
-        # Transform data in chunks
-        print("Transforming data in chunks...")
-        transformed_chunks = []
-        for i in range(0, frames_me.shape[0], self.chunk_size):
-            chunk = frames_me[i:i + self.chunk_size]
             chunk_flattened = chunk.reshape(chunk.shape[0], -1)
 
             if self.standardize4PCA:
-                chunk_flattened = (chunk_flattened - mean) / std
+                chunk_flattened = self._standardize_chunk(chunk_flattened, i)
 
-            transformed_chunk = ipca.transform(chunk_flattened)
-            transformed_chunks.append(transformed_chunk)
+            ipca.partial_fit(chunk_flattened)
+
+            # Break early if we processed the last chunk
+            if i + self.chunk_size >= num_frames - n_components:
+                print(f'transform last {i}')
+                break
+
+        logger.info("PCA fitting complete.")
+
+        # Transform data in chunks
+        transformed_chunks = []
+        for i in tqdm(range(self.start_index, num_frames, self.chunk_size), desc="Transforming PCA"):
+            chunk = frames_me[i:i + self.chunk_size]
+
+            # Merge last small chunk if needed
+            if i + self.chunk_size >= num_frames - n_components:
+                chunk = frames_me[i:]
+
+            chunk_flattened = chunk.reshape(chunk.shape[0], -1)
+
+            if self.standardize4PCA:
+                chunk_flattened = (chunk_flattened - self.mean) / self.std
+
+                # Check for NaN values after standardization
+                nan_count = np.isnan(chunk_flattened).sum()
+                if nan_count > 0:
+                    logger.warning(f"Standardized data contains {nan_count} NaN values.")
+
+            transformed_chunks.append(ipca.transform(chunk_flattened))
+
+            # Break early if we processed the last chunk
+            if i + self.chunk_size >= num_frames - n_components:
+                print(f'transform last {i}')
+                break
 
         # Combine transformed chunks into a single array
         pca_motion_energy = np.vstack(transformed_chunks)
+
+        logger.info(f"PCA transformation complete. Output shape: {pca_motion_energy.shape}")
         self.pca = ipca
         self.pca_motion_energy = pca_motion_energy
-        print('Added PCA results.')
 
-        # Create spatial masks to visualize PCs
-        print('Computing spatial masks...')
-        spatial_masks = self._compute_spatial_masks_in_chunks(pca_motion_energy, frames_me, standardize=True)
-        print('Done.')
-        self.spatial_masks = spatial_masks
+        return self, frames_me
 
-        return ipca, pca_motion_energy
-
-
-    def _compute_spatial_masks_in_chunks(self, pcs, frames_me2, standardize=True):
+    def _standardize_chunk(self, chunk_flattened: np.ndarray, i: int) -> np.ndarray:
         """
-        Compute spatial masks from principal components and motion energy.
+        Standardizes a given chunk for PCA processing.
 
-        Parameters:
-        ----------
-        pcs : np.ndarray
-            A 2D array of shape (n_samples, n_components) containing principal components.
-        frames_me2 : zarr.Array
-            A Zarr array of shape (n_samples, height, width) representing motion energy data.
-        standardize : bool, optional
-            Whether to standardize the masks. Defaults to True.
+        Args:
+            chunk_flattened (numpy.ndarray): 2D array where each row represents a sample.
+            i (int): Current chunk index.
 
         Returns:
-        -------
-        spatial_masks : list of np.ndarray
-            A list of 2D arrays where each array represents the mean spatial mask for each principal component.
+            numpy.ndarray: Standardized chunk.
+        """
+        if self.standardize4PCA:
+            if i == self.start_index:
+                self.mean = chunk_flattened.mean(axis=0)
+                self.std = chunk_flattened.std(axis=0)
+
+                if np.any(np.isnan(self.mean)) or np.any(np.isnan(self.std)):
+                    raise ValueError("NaN detected in mean or standard deviation!")
+                if np.any(self.std == 0):
+                    raise ValueError("Standard deviation contains zero values!")
+
+            chunk_flattened = (chunk_flattened - self.mean) / self.std
+
+            # Check for NaN values after standardization
+            nan_count = np.isnan(chunk_flattened).sum()
+            if nan_count > 0:
+                logger.warning(f"Standardized data contains {nan_count} NaN values.")
+
+        return chunk_flattened
+
+
+    def _add_spatial_masks(self, pca_motion_energy: np.ndarray, post_crop_frames_me: zarr.Array) -> None:
+        """
+        Computes and stores spatial masks for PCA visualization.
+
+        Args:
+            pca_motion_energy (np.ndarray): A 2D array (n_samples, n_components) with PCA-transformed motion energy data.
+            post_crop_frames_me (zarr.Array): A 3D array (n_samples, height, width) representing motion energy frames.
+
+        Updates:
+            self.spatial_masks (np.ndarray): Stores computed spatial masks for visualization.
+        """
+        logger.info("Computing spatial masks...")
+        self.spatial_masks = self._compute_spatial_masks_in_chunks(pca_motion_energy, post_crop_frames_me)
+        logger.info("Spatial masks computation complete.")
+
+        return self
+
+
+    def _compute_spatial_masks_in_chunks(self, pca_motion_energy: np.ndarray, post_crop_frames_me: zarr.Array) -> np.ndarray:
+        """
+        Computes spatial masks from principal components and motion energy.
+
+        Args:
+            pca_motion_energy (np.ndarray): 2D array (n_samples, n_components) containing PCA components.
+            post_crop_frames_me (zarr.Array): 3D array (n_samples, height, width) representing motion energy frames.
+
+        Returns:
+            np.ndarray: Array of spatial masks, where each mask represents a mean projection of one principal component.
+
+        Raises:
+            ValueError: If array dimensions do not match expectations.
         """
 
-        # Set default number of components if not specified
+        example_frame_index = 10
+        # Ensure correct dimensions
+        if pca_motion_energy.ndim != 2:
+            raise ValueError("pca_motion_energy must be a 2D array (n_samples, n_components).")
+
+        if post_crop_frames_me.ndim != 3:
+            raise ValueError("post_crop_frames_me must be a 3D array (n_samples, height, width).")
+
+        # Determine the number of components to process
         n_components = self.n_to_plot if self.n_to_plot is not None else 3
         spatial_masks = []
 
-        # Iterate over principal components
-        for i in range(n_components):
-            # Extract the i-th principal component
-            pc = pcs[:, i]
-            mask_sum = None
+        logger.info(f"Number of PCA components: {pca_motion_energy.shape[1]}")
+        logger.info(f"Total frames available: {post_crop_frames_me.shape[0] - self.start_index}")
+
+        # Standardization flag
+        if self.standardizeMasks:
+            logger.info("Standardizing PC mask values for plotting.")
+        else:
+            logger.info("Skipping standardization of PC masks.")
+
+        self.example_frame = post_crop_frames_me[example_frame_index]
+        # Iterate over the first n principal components
+        for pc_index in range(n_components):
+            logger.info(f"Processing Principal Component {pc_index + 1}...")
+
+            # Extract the current principal component
+            pc = pca_motion_energy[:, pc_index]
+
+            # Initialize mask sum and count
+            mask_sum = np.zeros(post_crop_frames_me.shape[1:], dtype=np.float64)
             count = 0
+            num_frames = post_crop_frames_me.shape[0]
 
-            # Iterate over chunks of frames_me2
-            for chunk_start in range(0, frames_me2.shape[0], self.chunk_size):
-                chunk_end = min(chunk_start + self.chunk_size, frames_me2.shape[0])
+            # Process frames in chunks
+            for i in tqdm(range(self.start_index, num_frames, self.chunk_size), desc=f"PC {pc_index + 1}"):
+                pc_i = i - 1  # Adjust index since PC has one less frame
+                chunk = post_crop_frames_me[i:i + self.chunk_size]
+                pc_chunk = pc[pc_i:pc_i + self.chunk_size, np.newaxis, np.newaxis]
 
-                # Load the chunk from Zarr
-                chunk = frames_me2[chunk_start:chunk_end]
+                # Handle last chunk separately
+                if i + self.chunk_size >= num_frames - n_components:
+                    chunk = post_crop_frames_me[i:]
+                    pc_chunk = pc[pc_i:, np.newaxis, np.newaxis]
+                    logger.info(f"Processing last chunk of PC {pc_index + 1}, shape: {chunk.shape}")
 
-                # Apply the principal component to the chunk
-                chunk_masks = chunk * pc[chunk_start:chunk_end, np.newaxis, np.newaxis]
+                # Ensure chunk and PC sizes match
+                if len(chunk) != len(pc_chunk):
+                    raise ValueError(f"Frame length ({len(chunk)}) does not match PC length ({len(pc_chunk)}).")
 
-                # Accumulate the sum of masks
-                if mask_sum is None:
-                    mask_sum = np.sum(chunk_masks, axis=0)
-                else:
-                    mask_sum += np.sum(chunk_masks, axis=0)
+                # Compute chunk masks
+                chunk_masks = chunk * pc_chunk
 
-                # Update the count
+                # Accumulate mask sum
+                mask_sum += np.sum(chunk_masks, axis=0)
+
+                # Update the frame count
                 count += chunk_masks.shape[0]
 
-            # Compute the mean mask
+                # Stop processing if last chunk is reached
+                if i + self.chunk_size >= num_frames - n_components:
+                    break
+
+            # Compute the mean spatial mask
             mean_mask = mask_sum / count
 
-            # Standardize the mask if required
-            if standardize:
-                mean = mean_mask.mean()
-                std = mean_mask.std()
-                mean_mask = (mean_mask - mean) / std
+            # Standardize if required
+            if self.standardizeMasks:
+                mean_mask = self._standardize_mean_mask(mean_mask)
 
-            # Append the computed mean mask to the list
+            # Store the mask
             spatial_masks.append(mean_mask)
 
-        return np.array(spatial_masks)
+        spatial_masks = np.array(spatial_masks)
+        return spatial_masks
 
-    def _plot_spatial_masks(self):
-            
-        n_components = self.n_components
-            
-        fig = plt.figure(figsize=(3 * n_components, 2))
-        
-        for i, mask in enumerate(self.spatial_masks):
-            plt.subplot(1, n_components, i + 1)
-            plt.imshow(mask, cmap='bwr', aspect='auto', vmin=-1, vmax=1)
-            plt.colorbar(label='')
-            plt.axis('off')
-            plt.title(f'PC {i + 1} mask')
-        
+    # def _crop_frames(self, frames_me: np.ndarray) -> tuple[np.ndarray, int, int]:
+    #     """
+    #     Crops the input frames based on the defined crop region.
+
+    #     Args:
+    #         frames_me (numpy.ndarray): 3D array of frames with shape (num_frames, height, width).
+
+    #     Returns:
+    #         tuple: (Cropped frames, Cropped height, Cropped width).
+
+    #     Raises:
+    #         AttributeError: If `self.crop_region` is not defined.
+    #     """
+    #     if not hasattr(self, 'crop_region') or self.crop_region is None:
+    #         raise AttributeError("Crop region is not defined. Ensure `_define_crop_region()` is called before cropping.")
+
+    #     crop_y_start, crop_x_start, crop_y_end, crop_x_end = self.crop_region
+
+    #     # Perform cropping
+    #     frames_me = frames_me[:, crop_y_start:crop_y_end, crop_x_start:crop_x_end]
+    #     H = crop_y_end - crop_y_start
+    #     W = crop_x_end - crop_x_start
+
+    #     logger.info(f"Cropped frames to shape: {frames_me.shape} (Height: {H}, Width: {W})")
+    #     return frames_me, H, W
+
+
+    def _standardize_mean_mask(self, mean_mask: np.ndarray) -> np.ndarray:
+        """
+        Standardizes the mean mask by subtracting its mean and dividing by its standard deviation.
+
+        Args:
+            mean_mask (numpy.ndarray): The input 2D mask to be standardized.
+
+        Returns:
+            numpy.ndarray: Standardized mean mask.
+
+        Raises:
+            ValueError: If standard deviation is zero, leading to division errors.
+        """
+        if not isinstance(mean_mask, np.ndarray):
+            raise TypeError("mean_mask must be a NumPy array.")
+
+        mean = mean_mask.mean()
+        std = mean_mask.std()
+
+        # Validate standard deviation
+        if std == 0:
+            raise ValueError("Standard deviation is zero, leading to division errors!")
+
+        # Standardize the mean mask
+        mean_mask = (mean_mask - mean) / std
+
+        # Check for NaN values after standardization
+        nan_count = np.isnan(mean_mask).sum()
+        if nan_count > 0:
+            logger.warning(f"Standardized mean mask contains {nan_count} NaN values.")
+
+        return mean_mask
+
+
+    def _plot_spatial_masks(self) -> plt.Figure:
+        """
+        Plots spatial masks corresponding to principal components.
+
+        Returns:
+            matplotlib.figure.Figure: The figure containing the spatial masks.
+
+        Raises:
+            AttributeError: If `self.spatial_masks` is missing or None.
+        """
+        if not hasattr(self, 'spatial_masks') or self.spatial_masks is None:
+            raise AttributeError("spatial_masks attribute is missing or None. Run PCA before plotting.")
+
+        if not isinstance(self.spatial_masks, np.ndarray):
+            raise TypeError("spatial_masks must be a NumPy array.")
+
+        n_components = self.n_to_plot
+        fig,axes = plt.subplots(figsize=(3 * (n_components + 1), 3), nrows = 1, ncols = 4)  # Extra space for the example frame
+
+        # Plot the example frame
+        ax = fig.add_subplot(1, n_components + 1, 1)
+        im = ax.imshow(self.example_frame, cmap='gray', aspect='auto')
+        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        ax.axis('off')
+        ax.set_title(f'Example Frame', fontsize=10)
+
+        for i, (ax, mask) in enumerate(zip(axes[1:], self.spatial_masks)):
+            im = ax.imshow(mask, cmap='bwr', aspect='auto', vmin=-1, vmax=1)
+            plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+            ax.axis('off')
+            ax.set_title(f'PC {i + 1} mask')
+
+        plt.tight_layout()
         plt.show()
-        
+
         return fig
 
-    def _plot_explained_variance(self):
+
+    def _plot_explained_variance(self) -> plt.Figure:
         """
         Plots the explained variance ratio of each principal component from a PCA model.
 
         Returns:
-        -------
-        fig : matplotlib.figure.Figure
-            The figure object containing the plot of explained variance.
+            matplotlib.figure.Figure: The figure containing the explained variance plot.
+
+        Raises:
+            ValueError: If PCA model has not been fitted.
         """
-        fig = plt.figure(figsize=(4,2))
-        fontsize=12
-        # Check if pca has been fitted
-        pca = self.pca
-        if not hasattr(pca, 'explained_variance_ratio_'):
+        if not hasattr(self.pca, 'explained_variance_ratio_'):
             raise ValueError("PCA object must be fitted before plotting.")
-        
-        # Get the explained variance ratio and convert to percentage
-        explained_variance_ratio = pca.explained_variance_ratio_
-        explained_variance = explained_variance_ratio * 100
-        
-        # Plot the explained variance
-        
-        plt.plot(range(1, len(explained_variance_ratio) + 1), explained_variance, 'o-', linewidth=2, markersize=5)
-        plt.title('Variance Explained by Principal Components', fontsize=fontsize)
-        plt.xlabel('Principal Component', fontsize=fontsize)
-        plt.ylabel('Explained Variance (%)', fontsize=fontsize)
-        plt.xlim([0, 30]) #show only top 30
+
+        fig, ax = plt.subplots(figsize=(4, 3))
+        explained_variance = self.pca.explained_variance_ratio_ * 100
+
+        ax.plot(range(1, len(explained_variance) + 1), explained_variance, 'o-', linewidth=2, markersize=5)
+        ax.set_title('Variance Explained by Principal Components', fontsize=12)
+        ax.set_xlabel('Principal Component', fontsize=12)
+        ax.set_ylabel('Explained Variance (%)', fontsize=12)
+        ax.set_xlim([0, 30])  # Show only top 30 components
         plt.tight_layout()
-        #plt.xticks(range(1, len(explained_variance_ratio) + 1))
-        #plt.grid(True)
         plt.show()
 
         return fig
 
-    def _plot_pca_components_traces(self, component_indices=[0, 1, 2], axes=None):
+
+    def _plot_pca_components_traces(self, component_indices: list = [0, 1, 2], remove_outliers: bool = True, axes=None) -> plt.Figure:
         """
-        Plots 3 PCA components from pca_motion_energy against x_trace_seconds.
+        Plots PCA components against time.
 
-        - component_indices: list of indices for the PCA components to plot (default: [0, 1, 2])
-        - title: title of the plot
-        """
-        if axes is None:
-            fig, axes = plt.subplots(len(component_indices), 1,figsize=(15,2*len(component_indices)))
-        pca_motion_energy = self.pca_motion_energy
-        fps = utils.get_fps(self.pkl_file)
-        title_fontsize = 20
-        label_fontsize = 16
-        tick_fontsize = 14
-        if pca_motion_energy.shape[1] < 3:
-            raise ValueError("pca_motion_energy must have at least 3 components to plot.")
-        
-        x_range = 10000
-        
-        x_trace_seconds = np.round(np.arange(1, x_range) / fps, 2)
-        for i, ax in enumerate(axes):
-            ax.plot(x_trace_seconds, pca_motion_energy[np.arange(1, x_range), component_indices[i]])
-            ax.set_ylabel(f'PCA {component_indices[i] + 1}', fontsize = label_fontsize)
-            ax.set_title(f'PCA {component_indices[i] + 1} over time (s)', fontsize = title_fontsize)
-            ax.tick_params(axis='both', which='major', labelsize=tick_fontsize)
-            ax.grid(True)
-        
-        axes[-1].set_xlabel('Time (s)', fontsize = label_fontsize)
-        
-        plt.tight_layout()
-        return axes
-
-
-## extra
- 
-    def _apply_pca_to_motion_energy(self):
-        """Apply PCA to the motion energy."""
-        me_store = zarr.DirectoryStore(self.motion_zarr_path)
-        frames_me = da.from_zarr(me_store , component='data')
-        print(f'Loaded frames {frames_me.shape}')
-
-        # Get number of components to fit
-        if self.n_components is None:
-            n_components = 100
-        else:
-            n_components = self.n_components
-
-        # crop frames if needed
-        if self.crop:
-            if self.crop_region is None:
-                self._define_crop_region()
-            print(f'Applying crop to me frames {self.crop_region}')
-            crop_y_start, crop_x_start, crop_y_end, crop_x_end = self.crop_region
-            frames_me2 = frames_me[:, crop_y_start:crop_y_end, crop_x_start:crop_x_end].copy()
-            del frames_me
-            H = crop_y_end - crop_y_start
-            W = crop_x_end - crop_x_start
-            # frames_me2 = frames_me2.rechunk((self.chunk_size, H, W)) 
-        else:
-            frames_me2 = frames_me
-        
-
-        # Reshape frames for PCA: (n_frames, height * width)
-        n_frames, height, width = frames_me2.shape
-        new_shape = (n_frames, height * width)
-        new_chunks = (self.chunk_size, new_shape[0])
-        try: 
-            reshaped_frames = frames_me2.reshape(new_shape).rechunk(new_chunks)
-            print(f"new reshaped array array shape: {reshaped_frames.shape}")
-            print(f"rechunked array size: {reshaped_frames.chunksize}")
-        except ValueError as e:
-            print(f"Error during reshaping: {e}")
-
-        # Standardize pixels if required
-        if self.standardize4PCA:
-            print("Standardizing data...")
-            mean = reshaped_frames.mean(axis=0)
-            std = reshaped_frames.std(axis=0)
-            standardized_frames = (reshaped_frames - mean) / std
-            print('done.')
-        else:
-            print("Skipping standardization of data.")
-            standardized_frames = reshaped_frames
-
-        # plot random frame
-        index = np.random(frames_me2.shape[0])
-        plt.imshow(frames_me2[index],vmax=np.percentile(frames_me2[index].ravel(), 98))
-        plt.show()
-
-
-        # Apply PCA to chunks
-        ipca = IncrementalPCA(n_components=n_components)
-
-        # Incrementally fit PCA on Dask array
-        print("Fitting PCA in chunks...")
-        for chunk in standardized_frames.to_delayed():
-            chunk_data = chunk[0].compute()
-            ipca.partial_fit(chunk_data)
-        print('done.')
-        # Transform data in chunks
-        print("transforming data in chunks...")
-        transformed_chunks = [
-             da.from_array(ipca.transform(chunk[0].compute()), chunks=(self.chunk_size, n_components))
-            for chunk in standardized_frames.to_delayed()]
-        print('done.')
-        # Combine transformed chunks into a single array
-        pca_motion_energy = da.concatenate(transformed_chunks, axis=0)
-        self.pca = ipca
-        self.pca_mpotion_energy = pca_motion_energy
-        print('added PCA results.')
-        # try using regular PCA
-        # pca = PCA(n_components=n_components)
-        # pca_motion_energy = pca.fit_transform(standardized_frames)
-        # self.pca = pca
-        # self.pca_motion_energy = pca_motion_energy
-        
-        # create spatial masks to see what PCs look like
-        print('Computing spatial masks...')
-        spatial_masks = self._compute_spatial_masks(pcs = pca_motion_energy, frames_me2=frames_me2, standardize=True)
-        print('done.')
-        self.spatial_masks = spatial_masks
-        return pca, pca_motion_energy
-
-
-    def _compute_spatial_masks(self, pcs, frames_me2, standardize=True):
-        """
-        Compute spatial masks from principal components and motion energy.
-
-        Parameters:
-        ----------
-        pcs : np.ndarray
-            A 2D array of shape (n_samples, n_components) containing principal components.
-        motion_energy : np.ndarray
-            A 3D array of shape (n_samples, height, width) representing motion energy data.
-        
-        standardize : bool, optional
-            Whether to standardize the masks. Defaults to False.
+        Args:
+            component_indices (list, optional): Indices of PCA components to plot. Defaults to [0, 1, 2].
+            remove_outliers (bool, optional): Whether to remove outliers above 99%. Defaults to True.
+            axes (matplotlib.axes.Axes, optional): Axes for plotting. Defaults to None.
 
         Returns:
-        -------
-        spatial_masks : list of np.ndarray
-            A list of 2D arrays where each array represents the mean spatial mask for each principal component.
+            matplotlib.figure.Figure: The figure containing PCA component traces.
+
+        Raises:
+            ValueError: If PCA motion energy data is missing or has fewer than three components.
+            AssertionError: If timestamps and PCA traces have different lengths.
         """
-        
-        # Set default number of components if n is None
-        n_components = self.n_to_plot
-        if n_components is None:
-            n_components = 3
+        if not hasattr(self, 'pca_motion_energy') or self.pca_motion_energy is None:
+            raise ValueError("PCA motion energy data is missing. Run PCA before plotting.")
 
-        spatial_masks = []
+        if self.pca_motion_energy.shape[1] < 3:
+            raise ValueError("pca_motion_energy must have at least 3 components to plot.")
 
-        for i in range(n_components):
-            # Extract the i-th principal component
-            pc = pcs[:, i]
-            
-            # Compute the mask for the current principal component
-            masks = frames_me2 * pc[:, np.newaxis, np.newaxis]
-            
-            # Standardize the mask if required
-            if standardize:
-                masks_mean = np.mean(masks)
-                masks_std = np.std(masks)
-                final_masks = (masks - masks_mean) / masks_std
-                mean_final_mask = np.mean(final_masks, axis=0)
-            else:
-                mean_final_mask = np.mean(masks, axis=0)
-            
-            # Append the computed mask to the list
-            spatial_masks.append(mean_final_mask)
-        
-        return np.array(spatial_masks)
+        fps = self.loaded_metadata.get('fps', 60)  # Default FPS to 60 if missing
+        x_range = min(10000, self.pca_motion_energy.shape[0])  # Ensure range doesn't exceed available data
+        x_trace_seconds = np.round(np.arange(100, x_range) / fps, 2)
+
+        if axes is None:
+            fig, axes = plt.subplots(len(component_indices), 1, figsize=(15, 2 * len(component_indices)))
+
+        for i, ax in enumerate(axes):
+            pc_trace = self.pca_motion_energy[:x_range, component_indices[i]]
+            if remove_outliers:
+                pc_trace = utils.remove_outliers_99(pc_trace)
+
+            assert len(x_trace_seconds) == len(pc_trace), "Timestamps and PC trace lengths do not match."
+
+            ax.plot(x_trace_seconds, pc_trace)
+            ax.set_ylabel(f'PCA {component_indices[i] + 1}', fontsize=16)
+            ax.set_title(f'PCA {component_indices[i] + 1} over time (s)', fontsize=20)
+            ax.tick_params(axis='both', which='major', labelsize=14)
+            ax.grid(True)
+
+        axes[-1].set_xlabel('Time (s)', fontsize=16)
+        plt.tight_layout()
+        return fig
+
+    def _plot_motion_energy_trace(self, npz_path: str, remove_outliers: bool = True) -> plt.Figure:
+        """
+        Creates a figure and plots a NumPy array from an NPZ file.
+
+        Args:
+            npz_data (dict): Dictionary containing NumPy arrays.
+            array_name (str, optional): Name of the array to plot. Defaults to the first available array.
+
+        Returns:
+            plt.Figure: The matplotlib figure object.
+
+        Raises:
+            ValueError: If the specified array name is not found.
+        """
+        npz_data = np.load(npz_path)
+
+        if not npz_data:
+            raise ValueError("No data found in the NPZ file.")
+
+        array_name = list(npz_data.keys())[0]
+
+        if array_name not in npz_data:
+            raise ValueError(f"Array '{array_name}' not found in the NPZ file. Available arrays: {list(npz_data.keys())}")
+
+        array = npz_data[array_name]
+        if remove_outliers:
+            array = utils.remove_outliers_99(array)
+
+        fig, ax = plt.subplots(figsize=(15, 6))
+        ax.plot(array, label=f"{array_name}")
+        ax.set_title(f"Array {array_name} from NPZ")
+        ax.set_xlabel("Index")
+        ax.set_ylabel("Value")
+        ax.legend()
+        ax.grid(True)
+
+        logger.info(f"Plotted array: {array_name}")
+
+        return fig  
+
+
+    def _save_results(self) -> None:
+        """
+        Saves the PCA object and results as a pickle file.
+
+        The function constructs the results folder path, creates directories if needed,
+        and saves the object as a serialized dictionary.
+
+        Returns:
+            None
+        """
+        logger.info("Saving PCA results...")
+
+        # Construct results folder path
+        top_results_folder = utils.construct_results_folder(self.loaded_metadata)
+        self.top_results_path = os.path.join(utils.get_results_path(), top_results_folder)
+
+        # Ensure directory exists before saving
+        os.makedirs(self.top_results_path, exist_ok=True)
+
+        # Save the object as a pickle file
+        save_path = os.path.join(self.top_results_path, "fit_motion_energy_pca.pkl")
+        with open(save_path, "wb") as f:
+            pickle.dump(utils.object_to_dict(self), f)
+
+        logger.info(f"PCA results saved at: {save_path}")
+        return self

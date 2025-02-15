@@ -148,3 +148,7 @@ dmypy.json
 !.vscode/extensions.json
 !.vscode/*.code-snippets
 .vscode
+code/tmp_me_pca.pkl
+code/tmp_me_pca_notstand_data_stand_masks.pkl
+code/tmp_me_pca_standardized_masks.pkl
+code/tmp_me_pca_with_nonstand_masks.pkl
