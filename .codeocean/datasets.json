@@ -1,9 +1,0 @@
-{
-	"version": 1,
-	"attached_datasets": [
-		{
-			"id": "90a3f0a5-a652-4268-a1ae-6b8a2fdcf63a",
-			"mount": "Thyme_736963_Face_zarr_motion_energy"
-		}
-	]
-}
