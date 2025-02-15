@@ -50,6 +50,8 @@ class PCAgenerator:
         self._load_metadata()
         if crop is None:
             self.crop = self.loaded_metadata.get('crop', False)
+        
+        self._get_motion_energy_trace()
 
     def _load_metadata(self) -> None:
         """Load metadata from the Zarr store."""
@@ -470,6 +472,23 @@ class PCAgenerator:
         plt.tight_layout()
         return fig
 
+    def _get_motion_energy_trace(self):
+            npz_data = np.load(self.npz_path)
+
+        if not npz_data:
+            raise ValueError("No data found in the NPZ file.")
+
+        array_name = list(npz_data.keys())[0]
+
+        if array_name not in npz_data:
+            raise ValueError(f"Array '{array_name}' not found in the NPZ file. Available arrays: {list(npz_data.keys())}")
+
+        array = npz_data[array_name]
+
+        self.motion_energy_trace = array
+        return self
+        
+
     def _plot_motion_energy_trace(self, remove_outliers: bool = True) -> plt.Figure:
         """
         Creates a figure and plots a NumPy array from an NPZ file.
@@ -482,19 +501,11 @@ class PCAgenerator:
         Raises:
             ValueError: If the specified array name is not found.
         """
-        npz_data = np.load(self.npz_path)
 
-        if not npz_data:
-            raise ValueError("No data found in the NPZ file.")
-
-        array_name = list(npz_data.keys())[0]
-
-        if array_name not in npz_data:
-            raise ValueError(f"Array '{array_name}' not found in the NPZ file. Available arrays: {list(npz_data.keys())}")
-
-        array = npz_data[array_name]
         if remove_outliers:
-            array = utils.remove_outliers_99(array)
+            array = utils.remove_outliers_99(self.array)
+        else:
+            self.array
 
         fig, ax = plt.subplots(figsize=(15, 6))
         ax.plot(array, label=f"{array_name}")
