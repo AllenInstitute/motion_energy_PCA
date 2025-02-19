@@ -6,7 +6,8 @@ This capsule is a part of Behavior Video QC to apply Principal Component Analysi
 - Loads motion energy data from Zarr and NPZ files.  
 - Applies PCA to extract meaningful components from motion energy.  
 - Supports optional cropping of motion energy frames before PCA.  
-- Generates and saves spatial masks for PCA components.  
+- To do: If cropping was applied during Motion Energy computation, loads 'cropepd_frames' indead of 'frames and skips the cropping stage. If `crop` is True, crops `frames` to using specified cropped_region.
+- Generates and saves spatial masks for PCA components plots.  
 - Saves results, including PCA components, explained variance, and motion energy traces.  
 - Tracks processing time.  
 
