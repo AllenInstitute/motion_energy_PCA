@@ -111,7 +111,9 @@ def remove_outliers_99(arr: np.ndarray) -> np.ndarray:
         numpy.ndarray: Array with outliers removed.
     """
     threshold = np.percentile(arr, 99)
-    return arr[arr <= threshold]
+    arr_out = arr.copy()  # Avoid modifying the original array
+    arr_out[arr_out > threshold] = np.nan
+    return arr_out
 
 
 def save_figure(fig: plt.Figure, save_path: str, fig_name: str, dpi: int = 300,
