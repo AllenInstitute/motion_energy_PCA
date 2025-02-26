@@ -13,7 +13,7 @@ crop_region = None # (200, 290, 280, 360)
 assert len(zarr_paths) == len(npz_paths), 'zarr files and npz files are misaligned'
 
 def run():
-    for zarr_path, npz_path in zip(zarr_paths[1:], npz_paths[1:]):
+    for zarr_path, npz_path in zip(zarr_paths, npz_paths):
         start_time = time.time()  # Start the timer
 
         me_pca = PCAgenerator(zarr_path, npz_path, crop=True, crop_region=crop_region, standardize4PCA=False, standardizeMasks=True) 
