@@ -512,13 +512,11 @@ class PCAgenerator:
 
         if not npz_data:
             raise ValueError("No data found in the NPZ file.")
-
-        array_name = list(npz_data.keys())[0]
-
-        if array_name not in npz_data:
-            raise ValueError(f"Array '{array_name}' not found in the NPZ file. Available arrays: {list(npz_data.keys())}")
-
-        array = npz_data[array_name]
+        
+        if self.use_cropped_frames:
+            array = npz_data['cropped_frame_motion_energy']
+        else:
+            array = npz_data['full_frame_motion_energy']
 
         self.motion_energy_trace = array
         return self
