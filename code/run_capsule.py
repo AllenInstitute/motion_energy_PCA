@@ -3,10 +3,13 @@ from tqdm import tqdm
 import utils
 import time  # Added for timing
 from PCAgenerator import PCAgenerator
+from pathlib import Path
 
-zarr_paths = utils.find_files(root_dir = '/root/capsule/data', endswith='zarr')
-npz_paths = utils.find_files(root_dir = '/root/capsule/data', endswith='.npz', return_dir=False)
-crop_region = (200, 290, 280, 360)
+DATA_PATH = Path("*/data/")
+zarr_paths = utils.find_files(root_dir = DATA_PATH, endswith='zarr')
+npz_paths = utils.find_files(root_dir = DATA_PATH, endswith='.npz', return_dir=False)
+print(len(zarr_paths))
+crop_region = None # (200, 290, 280, 360)
 assert len(zarr_paths) == len(npz_paths), 'zarr files and npz files are misaligned'
 
 def run():

@@ -3,8 +3,7 @@ import json
 import pickle
 import numpy as np
 import matplotlib.pyplot as plt
-
-
+from pathlib import Path
 
 def find_files(root_dir: str, endswith: str = '', return_dir: bool = True) -> list:
     """
@@ -71,14 +70,14 @@ def get_x_trace_sec(me_frames: np.ndarray, fps: int = 60) -> np.ndarray:
     return np.round(np.arange(1, me_frames.shape[0]) / fps, 2)
 
 
-def get_results_path() -> str:
+def get_results_path() -> Path:
     """
     Retrieve the path to the results folder.
 
     Returns:
         str: Path to the results folder.
     """
-    return "/root/capsule/results"
+    return Path("*/results/")
 
 
 def construct_results_folder(metadata: dict) -> str:
