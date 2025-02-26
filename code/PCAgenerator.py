@@ -87,6 +87,7 @@ class PCAgenerator:
         me_metadata = all_metadata.pop('video_metadata',None) #remove video metadata
         self.me_metadata = me_metadata
         logger.info("Metadata loaded successfully.")
+
         return self
 
     def _define_crop_region(self, crop_region: tuple = None) -> None:
@@ -507,7 +508,7 @@ class PCAgenerator:
         return fig
 
     def _get_motion_energy_trace(self):
-            npz_data = np.load(self.npz_path)
+        npz_data = np.load(self.npz_path)
 
         if not npz_data:
             raise ValueError("No data found in the NPZ file.")
