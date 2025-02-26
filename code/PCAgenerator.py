@@ -38,6 +38,7 @@ class PCAgenerator:
         self.npz_path = npz_path
         self.crop = crop
         self.crop_region = crop_region
+        self.use_cropped_frames = False
         self.n_components = 100  # Number of PCA components
         self.n_to_plot = 3  # Number of components to visualize
         self.standardize4PCA = standardize4PCA
@@ -48,21 +49,50 @@ class PCAgenerator:
         self.std = None
 
         self._load_metadata()
-        if crop is None:
-            self.crop = self.loaded_metadata.get('crop', False)
-        
+        self._compare_crop_settings()
         self._get_motion_energy_trace()
+
+    
+    def _compare_crop_settings(self):
+        """
+        Compares the current crop settings with the metadata and determines
+        whether cropping should be applied or skipped.
+        """
+
+        if self.crop is True:
+            if self.crop_region is None:
+                raise ValueError("Crop region cannot be None when crop is set to True")
+
+            if self.me_metadata.get("crop") is True:
+                if str(self.crop_region) == str(self.me_metadata.get("crop_region")):
+                    print("Skipping cropping since frames were already cropped to the right size in Motion Energy Capsule.")
+                    self.use_cropped_frames = True
+                else:
+                    print("Re-cropping frames since the new crop region differs from the one provided in Motion Energy Capsule.")
+
+        elif self.crop is None:
+            if self.me_metadata.get("crop") is True:
+                self.use_cropped_frames = True
+                print("Crop was not specified, using cropped frames from Motion Energy Capsule.")
+            elif self.me_metadata.get("crop") is False:
+                print("Computing PCA on full frames.")
+
+        return self
 
     def _load_metadata(self) -> None:
         """Load metadata from the Zarr store."""
         root_group = zarr.open_group(self.motion_zarr_path, mode='r')
-        self.loaded_metadata = json.loads(root_group.attrs['metadata'])
+        all_metadata = json.loads(root_group.attrs['metadata'])
+        self.video_metadata = all_metadata.get('video_metadata')
+        me_metadata = all_metadata.pop('video_metadata',None)
+        self.me_metadata = me_metadata
         logger.info("Metadata loaded successfully.")
+        return self
 
     def _define_crop_region(self, crop_region: tuple = None) -> None:
         """Define and validate the crop region."""
         if crop_region is None:
-            crop_region = self.loaded_metadata.get('crop_region', (100, 100, 200, 300))
+            crop_region = self.video_metadata.get('crop_region', (100, 100, 200, 300))
             logger.warning(f"Crop region not found in metadata, defaulting to {crop_region}")
 
         y, x, height, width = crop_region
@@ -448,7 +478,7 @@ class PCAgenerator:
         if self.pca_motion_energy.shape[1] < 3:
             raise ValueError("pca_motion_energy must have at least 3 components to plot.")
 
-        fps = self.loaded_metadata.get('fps', 60)  # Default FPS to 60 if missing
+        fps = self.video_metadata.get('fps', 60)  # Default FPS to 60 if missing
         x_range = min(10000, self.pca_motion_energy.shape[0])  # Ensure range doesn't exceed available data
         x_trace_seconds = np.round(np.arange(0, x_range) / fps, 2)
 
@@ -533,7 +563,7 @@ class PCAgenerator:
         logger.info("Saving PCA results...")
 
         # Construct results folder path
-        top_results_folder = utils.construct_results_folder(self.loaded_metadata)
+        top_results_folder = utils.construct_results_folder(self.video_metadata)
         self.top_results_path = os.path.join(utils.get_results_path(), top_results_folder)
 
         # Ensure directory exists before saving
