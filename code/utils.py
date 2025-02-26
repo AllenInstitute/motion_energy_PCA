@@ -77,7 +77,7 @@ def get_results_path() -> Path:
     Returns:
         str: Path to the results folder.
     """
-    return Path("*/results/")
+    return Path("/root/capsule/results/")
 
 
 def construct_results_folder(metadata: dict) -> str:
@@ -85,7 +85,7 @@ def construct_results_folder(metadata: dict) -> str:
     Construct a folder name for results storage based on metadata.
 
     Args:
-        metadata (dict): Dictionary containing 'mouse_id', 'camera_label', and 'data_asset_id'.
+        metadata (dict): Dictionary containing 'mouse_id', 'camera_label', and 'data_asset_name'.
 
     Returns:
         str: Constructed folder name.
@@ -94,7 +94,7 @@ def construct_results_folder(metadata: dict) -> str:
         KeyError: If required metadata fields are missing.
     """
     try:
-        return f"{metadata['mouse_id']}_{metadata['camera_label']}_{metadata['data_asset_id']}"
+        return f"{metadata['mouse_id']}_{metadata['data_asset_name']}_{metadata['camera_label']}"
     except KeyError as e:
         raise KeyError(f"Missing required metadata field: {e}")
 
@@ -153,24 +153,6 @@ def object_to_dict(obj):
     return obj
 
 
-def get_zarr_path(metadata: dict, path_to: str = "motion_energy") -> str:
-    """
-    Construct the path for saving Zarr storage based on metadata.
-
-    Args:
-        metadata (dict): Metadata containing 'mouse_id', 'camera_label', and 'data_asset_id'.
-        path_to (str, optional): Specifies type of frames ('gray_frames' or 'motion_energy_frames'). Defaults to 'motion_energy'.
-
-    Returns:
-        str: Full path to the Zarr storage file.
-    """
-    zarr_folder = construct_zarr_folder(metadata)
-    zarr_path = os.path.join(get_results_path(), zarr_folder)
-    os.makedirs(zarr_path, exist_ok=True)
-
-    filename = "processed_frames.zarr" if path_to == "gray_frames" else "motion_energy_frames.zarr"
-    return os.path.join(zarr_path, filename)
-
 
 def load_npz_file(npz_file_path: str) -> dict:
     """
@@ -190,35 +172,3 @@ def load_npz_file(npz_file_path: str) -> dict:
     npz_data = np.load(npz_file_path)
     return npz_data
 
-
-    #     try:
-    #     if not npz_data.files:
-    #         raise ValueError(f"NPZ file {npz_file_path} is empty.")
-
-    #     logger.info(f"Loaded NPZ file: {npz_file_path} | Arrays: {list(npz_data.keys())}")
-    #     return {key: npz_data[key] for key in npz_data.files}
-
-    # except FileNotFoundError as e:
-    #     logger.error(f"File not found: {npz_file_path}")
-    #     raise e
-    # except Exception as e:
-    #     logger.error(f"Error loading NPZ file: {e}")
-    #     raise e
-
-# def get_fps(file_path: str) -> int:
-#     """
-#     Retrieve the frames per second (FPS) from a metadata pickle file.
-
-#     Args:
-#         file_path (str): Path to the pickle file.
-
-#     Returns:
-#         int: FPS value if found, otherwise None.
-#     """
-#     meta = load_pickle_file(file_path)
-#     for key, value in meta.video_metadata.items():
-#         if "fps" in key.lower():
-#             print(f"Found key: '{key}' with value: {value}")
-#             return value
-#     print("FPS not found.")
-#     return None

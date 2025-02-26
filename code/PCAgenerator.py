@@ -49,6 +49,7 @@ class PCAgenerator:
         self.std = None
 
         self._load_metadata()
+        self.me_metadata['crop'] = True # find why it was saved as False
         self._compare_crop_settings()
         self._get_motion_energy_trace()
 
@@ -58,11 +59,10 @@ class PCAgenerator:
         Compares the current crop settings with the metadata and determines
         whether cropping should be applied or skipped.
         """
-
         if self.recrop is True:
             if self.crop_region is None:
                 raise ValueError("Crop region cannot be None when crop is set to True")
-
+            
             if self.me_metadata.get("crop") is True:
                 if str(self.crop_region) == str(self.me_metadata.get("crop_region")):
                     print("Skipping cropping since frames were already cropped to the right size in Motion Energy Capsule.")
@@ -536,13 +536,19 @@ class PCAgenerator:
         """
 
         if remove_outliers:
-            array = utils.remove_outliers_99(self.array)
+            array = utils.remove_outliers_99(self.motion_energy_trace)
         else:
-            self.array
+            array = self.motion_energy_trace
 
         fig, ax = plt.subplots(figsize=(15, 6))
+        if self.use_cropped_frames or self.recrop:
+            array_name = 'cropped frames'
+        else:
+            array_name = 'full frames'
+
+
         ax.plot(array, label=f"{array_name}")
-        ax.set_title(f"Array {array_name} from NPZ")
+        ax.set_title(f"Motion energy trace for {array_name} from NPZ")
         ax.set_xlabel("Index")
         ax.set_ylabel("Value")
         ax.legend()

@@ -16,7 +16,7 @@ def run():
     for zarr_path, npz_path in zip(zarr_paths, npz_paths):
         start_time = time.time()  # Start the timer
 
-        me_pca = PCAgenerator(zarr_path, npz_path, crop=True, crop_region=crop_region, standardize4PCA=False, standardizeMasks=True) 
+        me_pca = PCAgenerator(zarr_path, npz_path, recrop=None, crop_region=crop_region, standardize4PCA=False, standardizeMasks=True) 
         
         me_pca, post_crop_frames_me = me_pca._apply_pca_to_motion_energy_without_dask()
 
