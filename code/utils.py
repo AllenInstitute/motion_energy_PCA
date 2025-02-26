@@ -217,7 +217,7 @@ def load_npz_file(npz_file_path: str) -> dict:
 #         int: FPS value if found, otherwise None.
 #     """
 #     meta = load_pickle_file(file_path)
-#     for key, value in meta.loaded_metadata.items():
+#     for key, value in meta.video_metadata.items():
 #         if "fps" in key.lower():
 #             print(f"Found key: '{key}' with value: {value}")
 #             return value

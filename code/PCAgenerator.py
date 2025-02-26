@@ -22,21 +22,21 @@ class PCAgenerator:
     including cropping, standardization, and chunk-wise processing.
     """
 
-    def __init__(self, motion_zarr_path: str, npz_path: str, crop: bool = None, crop_region: tuple = None,
+    def __init__(self, motion_zarr_path: str, npz_path: str, recrop: bool = None, crop_region: tuple = None,
                  standardize4PCA: bool = True, standardizeMasks: bool = False):
         """
         Initialize PCA Generator.
 
         Args:
             motion_zarr_path (str): Path to the Zarr dataset containing motion energy frames.
-            crop (bool, optional): Whether to crop frames before PCA. Defaults to None.
+            recrop (bool, optional): Whether to crop frames before PCA. Defaults to None.
             crop_region (tuple, optional): Crop region as (y_start, x_start, y_end, x_end).
             standardize4PCA (bool, optional): If True, standardizes frames before PCA. Defaults to True.
             standardizeMasks (bool, optional): If True, standardizes masks when plotting. Defaults to False.
         """
         self.motion_zarr_path = motion_zarr_path
         self.npz_path = npz_path
-        self.crop = crop
+        self.recrop = recrop
         self.crop_region = crop_region
         self.use_cropped_frames = False
         self.n_components = 100  # Number of PCA components
@@ -53,13 +53,13 @@ class PCAgenerator:
         self._get_motion_energy_trace()
 
     
-    def _compare_crop_settings(self):
+    def _compare_crop_settings(self) -> None:
         """
         Compares the current crop settings with the metadata and determines
         whether cropping should be applied or skipped.
         """
 
-        if self.crop is True:
+        if self.recrop is True:
             if self.crop_region is None:
                 raise ValueError("Crop region cannot be None when crop is set to True")
 
@@ -70,7 +70,7 @@ class PCAgenerator:
                 else:
                     print("Re-cropping frames since the new crop region differs from the one provided in Motion Energy Capsule.")
 
-        elif self.crop is None:
+        elif self.recrop is None:
             if self.me_metadata.get("crop") is True:
                 self.use_cropped_frames = True
                 print("Crop was not specified, using cropped frames from Motion Energy Capsule.")
@@ -84,7 +84,7 @@ class PCAgenerator:
         root_group = zarr.open_group(self.motion_zarr_path, mode='r')
         all_metadata = json.loads(root_group.attrs['metadata'])
         self.video_metadata = all_metadata.get('video_metadata')
-        me_metadata = all_metadata.pop('video_metadata',None)
+        me_metadata = all_metadata.pop('video_metadata',None) #remove video metadata
         self.me_metadata = me_metadata
         logger.info("Metadata loaded successfully.")
         return self
@@ -109,18 +109,22 @@ class PCAgenerator:
         # Load motion energy frames from Zarr
         me_store = zarr.DirectoryStore(self.motion_zarr_path)
         zarr_group = zarr.open(me_store, mode='r')
-        frames_me = zarr_group['data']
+        if self.use_cropped_frames:
+            frames_me = zarr_group['cropped_frames']
+        else:
+            frames_me = zarr_group['full_frames']
         logger.info(f"Loaded motion energy frames with shape {frames_me.shape}")
 
         # Define PCA components
         n_components = self.n_components or 100
 
         # Apply cropping if needed
-        if self.crop:
-            if self.crop_region is None:
-                self._define_crop_region()
-            crop_y_start, crop_x_start, crop_y_end, crop_x_end = self.crop_region
-            frames_me = frames_me[:, crop_y_start:crop_y_end, crop_x_start:crop_x_end]
+        if self.recrop and self.use_cropped_frames is False:
+            if not self.crop_region:
+                raise ValueError("Crop region cannot be None or empty when crop is set to True")
+            else:
+                crop_y_start, crop_x_start, crop_y_end, crop_x_end = self.crop_region
+                frames_me = frames_me[:, crop_y_start:crop_y_end, crop_x_start:crop_x_end]
 
         # Standardize if required (see below)
         if self.standardize4PCA:
