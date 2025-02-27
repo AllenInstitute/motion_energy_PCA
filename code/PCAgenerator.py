@@ -191,7 +191,7 @@ class PCAgenerator:
         logger.info(f"PCA transformation complete. Output shape: {pca_motion_energy.shape}")
         self.pca = ipca
         self.pca_motion_energy = pca_motion_energy
-        self.explained_variance = explained_variance_ratio_
+        self.explained_variance = ipca.explained_variance_ratio_
 
         return self, frames_me
 
