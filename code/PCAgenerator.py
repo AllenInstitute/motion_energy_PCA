@@ -191,6 +191,7 @@ class PCAgenerator:
         logger.info(f"PCA transformation complete. Output shape: {pca_motion_energy.shape}")
         self.pca = ipca
         self.pca_motion_energy = pca_motion_energy
+        self.explained_variance = explained_variance_ratio_
 
         return self, frames_me
 
@@ -348,6 +349,13 @@ class PCAgenerator:
         save_path = os.path.join(self.top_results_path, "fit_motion_energy_pca.pkl")
         with open(save_path, "wb") as f:
             pickle.dump(utils.object_to_dict(self), f)
+        logger.info(f"PCA dictionary saved at: {save_path}")
+        try:
+            # Save PCA object to a file
+            save_path = os.path.join(self.top_results_path, "pca_model.pkl")
+            with open(save_path, "wb") as f:
+                pickle.dump(self.pca, f)
+        except:
+            logger.info("Could not save pca object")
 
-        logger.info(f"PCA results saved at: {save_path}")
         return self
