@@ -50,7 +50,7 @@ class PCAgenerator:
         self._load_metadata()
         self.me_metadata['crop'] = True # find why it was saved as False
         self._compare_crop_settings()
-        self._get_motion_energy_trace()
+        #self._get_motion_energy_trace()
 
     
     def _compare_crop_settings(self) -> None:
