@@ -273,12 +273,7 @@ class PCAgenerator:
         logger.info(f"Number of PCA components: {pca_motion_energy.shape[1]}")
         logger.info(f"Total frames available: {post_crop_frames_me.shape[0] - self.start_index}")
 
-        # Standardization flag
-        if self.standardizeMasks:
-            logger.info("Standardizing PC mask values for plotting.")
-        else:
-            logger.info("Skipping standardization of PC masks.")
-
+        
         self.mean_me_frame = np.mean(post_crop_frames_me[frames_indx], axis=0)
         # Iterate over the first n principal components
         for pc_index in range(n_components):
