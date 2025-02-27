@@ -23,7 +23,7 @@ class PCAgenerator:
     """
 
     def __init__(self, motion_zarr_path: str, npz_path: str, recrop: bool = None, crop_region: tuple = None,
-                 standardize4PCA: bool = True, standardizeMasks: bool = False):
+                 standardize4PCA: bool = False):
         """
         Initialize PCA Generator.
 
@@ -42,7 +42,6 @@ class PCAgenerator:
         self.n_components = 100  # Number of PCA components
         self.n_to_plot = 3  # Number of components to visualize
         self.standardize4PCA = standardize4PCA
-        self.standardizeMasks = standardizeMasks
         self.chunk_size = 100
         self.start_index = 0  # First frame with data info should have been dropped when me was computed
         self.mean = None
@@ -259,7 +258,7 @@ class PCAgenerator:
             ValueError: If array dimensions do not match expectations.
         """
 
-        example_frame_index = 10
+        frames_indx = [100:200]
         # Ensure correct dimensions
         if pca_motion_energy.ndim != 2:
             raise ValueError("pca_motion_energy must be a 2D array (n_samples, n_components).")
@@ -280,7 +279,7 @@ class PCAgenerator:
         else:
             logger.info("Skipping standardization of PC masks.")
 
-        self.example_frame = post_crop_frames_me[example_frame_index]
+        self.mean_me_frame = np.mean(post_crop_frames_me[frames_indx], axis=0)
         # Iterate over the first n principal components
         for pc_index in range(n_components):
             logger.info(f"Processing Principal Component {pc_index + 1}...")
@@ -325,41 +324,11 @@ class PCAgenerator:
             # Compute the mean spatial mask
             mean_mask = mask_sum / count
 
-            # Standardize if required
-            if self.standardizeMasks:
-                mean_mask = self._standardize_mean_mask(mean_mask)
-
             # Store the mask
             spatial_masks.append(mean_mask)
 
         spatial_masks = np.array(spatial_masks)
         return spatial_masks
-
-    # def _crop_frames(self, frames_me: np.ndarray) -> tuple[np.ndarray, int, int]:
-    #     """
-    #     Crops the input frames based on the defined crop region.
-
-    #     Args:
-    #         frames_me (numpy.ndarray): 3D array of frames with shape (num_frames, height, width).
-
-    #     Returns:
-    #         tuple: (Cropped frames, Cropped height, Cropped width).
-
-    #     Raises:
-    #         AttributeError: If `self.crop_region` is not defined.
-    #     """
-    #     if not hasattr(self, 'crop_region') or self.crop_region is None:
-    #         raise AttributeError("Crop region is not defined. Ensure `_define_crop_region()` is called before cropping.")
-
-    #     crop_y_start, crop_x_start, crop_y_end, crop_x_end = self.crop_region
-
-    #     # Perform cropping
-    #     frames_me = frames_me[:, crop_y_start:crop_y_end, crop_x_start:crop_x_end]
-    #     H = crop_y_end - crop_y_start
-    #     W = crop_x_end - crop_x_start
-
-    #     logger.info(f"Cropped frames to shape: {frames_me.shape} (Height: {H}, Width: {W})")
-    #     return frames_me, H, W
 
 
     def _standardize_mean_mask(self, mean_mask: np.ndarray) -> np.ndarray:
