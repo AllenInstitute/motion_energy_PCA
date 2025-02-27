@@ -22,7 +22,7 @@ class PCAgenerator:
     including cropping, standardization, and chunk-wise processing.
     """
 
-    def __init__(self, motion_zarr_path: str, npz_path: str, recrop: bool = None, crop_region: tuple = None,
+    def __init__(self, motion_zarr_path: str, npz_path: str, use_cropped_frames: bool = True, recrop: bool = None, crop_region: tuple = None,
                  standardize4PCA: bool = False):
         """
         Initialize PCA Generator.
@@ -38,7 +38,7 @@ class PCAgenerator:
         self.npz_path = npz_path
         self.recrop = recrop
         self.crop_region = crop_region
-        self.use_cropped_frames = False
+        self.use_cropped_frames = use_cropped_frames
         self.n_components = 100  # Number of PCA components
         self.n_to_plot = 3  # Number of components to visualize
         self.standardize4PCA = standardize4PCA
@@ -49,7 +49,7 @@ class PCAgenerator:
 
         self._load_metadata()
         self.me_metadata['crop'] = True # find why it was saved as False
-        self._compare_crop_settings()
+        #self._compare_crop_settings()
         #self._get_motion_energy_trace()
 
     
