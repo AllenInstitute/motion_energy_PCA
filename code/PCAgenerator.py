@@ -258,7 +258,6 @@ class PCAgenerator:
             ValueError: If array dimensions do not match expectations.
         """
 
-        frames_indx = [100:200]
         # Ensure correct dimensions
         if pca_motion_energy.ndim != 2:
             raise ValueError("pca_motion_energy must be a 2D array (n_samples, n_components).")
@@ -274,7 +273,7 @@ class PCAgenerator:
         logger.info(f"Total frames available: {post_crop_frames_me.shape[0] - self.start_index}")
 
         
-        self.mean_me_frame = np.mean(post_crop_frames_me[frames_indx], axis=0)
+        self.mean_me_frame = np.mean(post_crop_frames_me[100:200], axis=0)
         # Iterate over the first n principal components
         for pc_index in range(n_components):
             logger.info(f"Processing Principal Component {pc_index + 1}...")
