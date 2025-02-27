@@ -94,7 +94,7 @@ def construct_results_folder(metadata: dict) -> str:
         KeyError: If required metadata fields are missing.
     """
     try:
-        return f"{metadata['mouse_id']}_{metadata['data_asset_name']}_{metadata['camera_label']_PCA}"
+        return f"{metadata['mouse_id']}_{metadata['data_asset_name']}_{metadata['camera_label']}_PCA"
     except KeyError as e:
         raise KeyError(f"Missing required metadata field: {e}")
 
