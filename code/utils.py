@@ -6,7 +6,12 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-def find_files(root_dir: Path, endswith: str = '', return_dir: bool = True) -> list:
+def find_files(directory: Path, endswith: str ) -> list:
+    return [
+        str(p) for p in directory.rglob(endswith)
+    ]
+
+def find_files_old(root_dir: Path, endswith: str = '', return_dir: bool = True) -> list:
     """
     Recursively search for files or directories ending with a specific string in a given root directory.
 
