@@ -19,7 +19,7 @@ def find_zarr_paths(directory: Path = Path(), subselect: str = '', tag: str = ''
         list: A list of paths to Zarr directories.
     """
     zarr_paths = []
-    for root, dirs, _ in os.walk(directory):
+    for root, dirs, files in os.walk(directory):
         print(dirs)
         if subselect not in root:
             continue  # Skip directories that don't match the subselect filter
@@ -28,6 +28,12 @@ def find_zarr_paths(directory: Path = Path(), subselect: str = '', tag: str = ''
         for d in tqdm(dirs, desc=f"Searching for Zarr directories in {root}"):
             if endswith in d:
                 full_path = os.path.join(root, d)
+                print(f"\nFound Zarr directory: {full_path}")
+                zarr_paths.append(full_path)
+
+        for f in tqdm(files, desc=f"Searching for files in {root}"):
+            if endswith in f:
+                full_path = os.path.join(root, f)
                 print(f"\nFound Zarr directory: {full_path}")
                 zarr_paths.append(full_path)
 
