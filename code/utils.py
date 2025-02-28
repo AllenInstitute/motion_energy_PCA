@@ -37,7 +37,7 @@ def find_input_paths(directory: Path = Path(), subselect: str = '', tag: str = '
                 print(f"\nFound {endswith} file: {full_path}")
                 input_paths.append(full_path)
 
-    return paths
+    return input_paths
 
 def find_files(directory: Path, endswith: str ) -> list:
     return [
