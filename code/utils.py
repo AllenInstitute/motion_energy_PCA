@@ -22,13 +22,12 @@ def find_files(root_dir: Path, endswith: str = '', return_dir: bool = True) -> l
     for root, dirs, files in os.walk(root_dir):
         print(f'{root}, {dirs}, {files}')
         if return_dir:
-            for dir_name in dirs:
-                print(f'Looking for {endswith} files in {dir_name}')
-                if dir_name.endswith(endswith):
+            for d in tqdm(dirs, desc=f"Searching for Zarr directories in {root}"):
+                if d.endswith(endswith):
                     collected_files.append(os.path.join(root, dir_name))
         else:
-            for file_name in files:
-                if file_name.endswith(endswith):
+            for f in tqdm(files, desc=f"Searching for Zarr files in {root}"):
+                if f.endswith(endswith):
                     collected_files.append(os.path.join(root, file_name))
 
     return collected_files
