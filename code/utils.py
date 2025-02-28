@@ -22,6 +22,7 @@ def find_files(root_dir: str, endswith: str = '', return_dir: bool = True) -> li
     for root, dirs, files in os.walk(root_dir):
         if return_dir:
             for dir_name in dirs:
+                print(f'Looking for {endswith} files in {dir_name}')
                 if dir_name.endswith(endswith):
                     collected_files.append(os.path.join(root, dir_name))
         else:
