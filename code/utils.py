@@ -6,7 +6,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-def find_zarr_paths(directory: Path = Path(), subselect: str = '', tag: str = '', endswith = 'zarr') -> list:
+def find_input_paths(directory: Path = Path(), subselect: str = '', tag: str = '', endswith = 'zarr') -> list:
     """
     Retrieve paths to Zarr directories within the specified directory, optionally filtered by a subdirectory.
 
@@ -18,7 +18,7 @@ def find_zarr_paths(directory: Path = Path(), subselect: str = '', tag: str = ''
     Returns:
         list: A list of paths to Zarr directories.
     """
-    zarr_paths = []
+    input_paths = []
     for root, dirs, files in os.walk(directory):
         print(dirs)
         if subselect not in root:
@@ -28,16 +28,16 @@ def find_zarr_paths(directory: Path = Path(), subselect: str = '', tag: str = ''
         for d in tqdm(dirs, desc=f"Searching for Zarr directories in {root}"):
             if endswith in d:
                 full_path = os.path.join(root, d)
-                print(f"\nFound Zarr directory: {full_path}")
-                zarr_paths.append(full_path)
+                print(f"\nFound {endswith} directory: {full_path}")
+                input_paths.append(full_path)
 
         for f in tqdm(files, desc=f"Searching for files in {root}"):
             if endswith in f:
                 full_path = os.path.join(root, f)
-                print(f"\nFound Zarr directory: {full_path}")
-                zarr_paths.append(full_path)
+                print(f"\nFound {endswith} file: {full_path}")
+                input_paths.append(full_path)
 
-    return zarr_paths
+    return paths
 
 def find_files(directory: Path, endswith: str ) -> list:
     return [
