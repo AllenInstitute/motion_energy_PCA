@@ -10,7 +10,7 @@ zarr_paths = utils.find_input_paths(directory = DATA_PATH, endswith='zarr')
 npz_paths = utils.find_input_paths(directory = DATA_PATH, endswith='.npz')
 #zarr_paths = utils.find_files(directory = DATA_PATH, endswith='.zarr')
 #npz_paths = utils.find_files(directory = DATA_PATH, endswith='.npz')
-print(len(zarr_paths))
+print(len(zarr_paths), len(npz_paths))
 assert len(zarr_paths) == len(npz_paths), 'zarr files and npz files are misaligned'
 
 def run():

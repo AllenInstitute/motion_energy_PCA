@@ -28,13 +28,13 @@ def find_input_paths(directory: Path = Path(), subselect: str = '', tag: str = '
         for d in tqdm(dirs, desc=f"Searching for Zarr directories in {root}"):
             if endswith in d:
                 full_path = os.path.join(root, d)
-                print(f"\nFound {endswith} directory: {full_path}")
+                print(f"\n.  Found {endswith} directory: {full_path}")
                 input_paths.append(full_path)
 
         for f in tqdm(files, desc=f"Searching for files in {root}"):
             if endswith in f:
                 full_path = os.path.join(root, f)
-                print(f"\nFound {endswith} file: {full_path}")
+                print(f"\n.  Found {endswith} file: {full_path}")
                 input_paths.append(full_path)
 
     return input_paths
