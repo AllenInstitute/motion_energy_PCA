@@ -20,6 +20,7 @@ def find_files(root_dir: str, endswith: str = '', return_dir: bool = True) -> li
     collected_files = []
 
     for root, dirs, files in os.walk(root_dir):
+        print('{root}, {dirs}, {files}')
         if return_dir:
             for dir_name in dirs:
                 print(f'Looking for {endswith} files in {dir_name}')
