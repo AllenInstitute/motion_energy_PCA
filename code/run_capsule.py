@@ -5,7 +5,7 @@ import time  # Added for timing
 from PCAgenerator import PCAgenerator
 from pathlib import Path
 
-DATA_PATH = Path("/root/capsule/data/")
+DATA_PATH = utils.get_data_path(pipeline=True)
 zarr_paths = utils.find_files(root_dir = DATA_PATH, endswith='zarr')
 npz_paths = utils.find_files(root_dir = DATA_PATH, endswith='.npz', return_dir=False)
 print(len(zarr_paths))

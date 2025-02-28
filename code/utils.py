@@ -72,14 +72,32 @@ def get_x_trace_sec(me_frames: np.ndarray, fps: int = 60) -> np.ndarray:
     return np.round(np.arange(1, me_frames.shape[0]) / fps, 2)
 
 
-def get_results_path() -> Path:
+def get_results_folder(pipeline: bool = True) -> Path:
     """
-    Retrieve the path to the results folder.
+    Get the results folder path.
 
     Returns:
         str: Path to the results folder.
     """
-    return Path("/root/capsule/results/")
+    if pipeline:
+        return Path('/results/')
+    else:
+        return Path('/root/capsule/results')
+
+
+def get_data_path(pipeline: bool = True) -> Path:
+    """
+    Get the data folder path.
+
+    Returns:
+        str: Path to the results folder.
+    """
+    if pipeline:
+        return Path('/data/')
+    else:
+        return Path('/root/capsule/data')
+
+
 
 
 def construct_results_folder(metadata: dict) -> str:
