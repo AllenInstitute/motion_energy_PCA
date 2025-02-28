@@ -6,6 +6,8 @@ from PCAgenerator import PCAgenerator
 from pathlib import Path
 
 DATA_PATH = utils.get_data_path(pipeline=True)
+zarr_paths = utils.find_zarr_paths(directory = DATA_PATH, endswith='zarr')
+npz_paths = utils.find_zarr_paths(directory = DATA_PATH, endswith='.npz')
 zarr_paths = utils.find_files(directory = DATA_PATH, endswith='.zarr')
 npz_paths = utils.find_files(directory = DATA_PATH, endswith='.npz')
 print(len(zarr_paths))
