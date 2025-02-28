@@ -32,10 +32,9 @@ def find_input_paths(directory: Path = Path(),  tag: str = '', endswith = '') ->
                 full_path = os.path.join(root, f)
                 print(f"\n.  Found {endswith} file: {full_path}")
                 input_paths.append(full_path)
-    if input_paths not empty:
-        return input_paths
-    else:
-        return None
+   
+    return input_paths
+
 
 def find_files(directory: Path, endswith: str ) -> list:
     return [
