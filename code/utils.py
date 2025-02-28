@@ -6,13 +6,12 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-def find_input_paths(directory: Path = Path(), subselect: str = '', tag: str = '', endswith = 'zarr') -> list:
+def find_input_paths(directory: Path = Path(),  tag: str = '', endswith = 'zarr') -> list:
     """
     Retrieve paths to Zarr directories within the specified directory, optionally filtered by a subdirectory.
 
     Args:
         directory (Path): The base directory to search for Zarr files.
-        subselect (str): Optional subdirectory name to filter the search.
         tag (str): str tag in video filename to include. (not being used)
 
     Returns:
@@ -20,11 +19,6 @@ def find_input_paths(directory: Path = Path(), subselect: str = '', tag: str = '
     """
     input_paths = []
     for root, dirs, files in os.walk(directory):
-        print(dirs)
-        if subselect not in root:
-            continue  # Skip directories that don't match the subselect filter
-        
-        
         for d in tqdm(dirs, desc=f"Searching for Zarr directories in {root}"):
             if endswith in d:
                 full_path = os.path.join(root, d)
