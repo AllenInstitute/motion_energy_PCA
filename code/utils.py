@@ -24,11 +24,11 @@ def find_files(root_dir: Path, endswith: str = '', return_dir: bool = True) -> l
         if return_dir:
             for d in tqdm(dirs, desc=f"Searching for Zarr directories in {root}"):
                 if d.endswith(endswith):
-                    collected_files.append(os.path.join(root, dir_name))
+                    collected_files.append(os.path.join(root, d))
         else:
             for f in tqdm(files, desc=f"Searching for Zarr files in {root}"):
                 if f.endswith(endswith):
-                    collected_files.append(os.path.join(root, file_name))
+                    collected_files.append(os.path.join(root, f))
 
     return collected_files
 
