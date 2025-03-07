@@ -11,7 +11,7 @@ zarr_paths = utils.find_input_paths(directory = DATA_PATH, return_file=False, en
 
 def run():
     #for zarr_path, npz_path in zip(zarr_paths[:1], npz_paths[:1]):
-    for zarr_path in zarr_paths:
+    for zarr_path in zarr_paths[:1]:
         try:
             pkl_file = utils.find_input_paths(directory = zarr_path, return_file = True, endswith='.pkl')
         except:
