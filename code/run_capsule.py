@@ -23,7 +23,7 @@ def run():
 
         start_time = time.time()  # Start the timer
 
-        me_pca = PCAgenerator(zarr_path = zarr_path, pkl_file = pkl_file, npz_path=npz_file, use_cropped_frames=True, standardize4PCA=False) 
+        me_pca = PCAgenerator(motion_zarr_path = zarr_path, pkl_file = pkl_file, npz_path=npz_file, use_cropped_frames=True, standardize4PCA=False) 
         
         me_pca, post_crop_frames_me = me_pca._apply_pca_to_motion_energy_without_dask()
 
