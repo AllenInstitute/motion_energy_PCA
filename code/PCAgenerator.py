@@ -22,7 +22,7 @@ class PCAgenerator:
     including cropping, standardization, and chunk-wise processing.
     """
 
-    def __init__(self, motion_zarr_path: str, npz_path: str, use_cropped_frames: bool = True, recrop: bool = None, crop_region: tuple = None,
+    def __init__(self, motion_zarr_path: str, pkl_file: str = None, npz_file: str = None, use_cropped_frames: bool = True, recrop: bool = None, crop_region: tuple = None,
                  standardize4PCA: bool = False):
         """
         Initialize PCA Generator.
@@ -35,7 +35,8 @@ class PCAgenerator:
             standardizeMasks (bool, optional): If True, standardizes masks when plotting. Defaults to False.
         """
         self.motion_zarr_path = motion_zarr_path
-        self.npz_path = npz_path
+        self.pkl_file = pkl_file
+        self.npz_file = npz_file
         self.recrop = recrop
         self.crop_region = crop_region
         self.use_cropped_frames = use_cropped_frames
@@ -46,7 +47,6 @@ class PCAgenerator:
         self.start_index = 0  # First frame with data info should have been dropped when me was computed
         self.mean = None
         self.std = None
-
         self._load_metadata()
         self.me_metadata['crop'] = True # find why it was saved as False
         #self._compare_crop_settings()

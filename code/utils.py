@@ -6,7 +6,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-def find_input_paths(directory: Path = Path(),  tag: str = '', endswith = '') -> list:
+def find_input_paths(directory: Path = Path(), return_file = False, tag: str = '', endswith = '') -> list:
     """
     Retrieve paths to Zarr directories within the specified directory, optionally filtered by a subdirectory.
 
@@ -19,19 +19,20 @@ def find_input_paths(directory: Path = Path(),  tag: str = '', endswith = '') ->
     """
     input_paths = []
     for root, dirs, files in os.walk(directory):
-        for d in tqdm(dirs, desc=f"Searching for Zarr directories in {root}"):
-            print(f'.....directory {d}.....')
-            if endswith in d:
-                full_path = os.path.join(root, d)
-                print(f"\n.  Found {endswith} directory: {full_path}")
-                input_paths.append(full_path)
-
-        for f in tqdm(files, desc=f"Searching for files in {root}"):
-            print(f'.....file {f}.....')
-            if endswith in f:
-                full_path = os.path.join(root, f)
-                print(f"\n.  Found {endswith} file: {full_path}")
-                input_paths.append(full_path)
+        if return_file is False:
+            for d in tqdm(dirs, desc=f"Searching for Zarr directories in {root}"):
+                #print(f'.....directory {d}.....')
+                if endswith in d:
+                    full_path = os.path.join(root, d)
+                    print(f"\n.  Found {endswith} directory: {full_path}")
+                    input_paths.append(full_path)
+        else:
+            for f in tqdm(files, desc=f"Searching for files in {root}"):
+                #print(f'.....file {f}.....')
+                if endswith in f:
+                    full_path = os.path.join(root, f)
+                    print(f"\n.  Found {endswith} file: {full_path}")
+                    input_paths.append(full_path)
    
     return input_paths
 
@@ -131,8 +132,6 @@ def get_data_path(pipeline: bool = True) -> Path:
         return Path('/data/')
     else:
         return Path('/root/capsule/data')
-
-
 
 
 def construct_results_folder(metadata: dict) -> str:

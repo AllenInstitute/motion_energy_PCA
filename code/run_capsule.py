@@ -6,19 +6,25 @@ from PCAgenerator import PCAgenerator
 from pathlib import Path
 
 DATA_PATH = utils.get_data_path(pipeline=True)
-DATA_PATH = Path("/data/Thyme_test2_v2/")
-zarr_paths = utils.find_input_paths(directory = DATA_PATH, endswith='zarr')
-npz_paths = utils.find_input_paths(directory = DATA_PATH, endswith='.npz')
-#zarr_paths = utils.find_files(directory = DATA_PATH, endswith='.zarr')
-#npz_paths = utils.find_files(directory = DATA_PATH, endswith='.npz')
-print(len(zarr_paths), len(npz_paths))
-assert len(zarr_paths) == len(npz_paths), 'zarr files and npz files are misaligned'
+DATA_PATH = Path("/data/Thyme_ME_results/")
+zarr_paths = utils.find_input_paths(directory = DATA_PATH, return_file=False, endswith='zarr')
 
 def run():
-    for zarr_path, npz_path in zip(zarr_paths, npz_paths):
+    #for zarr_path, npz_path in zip(zarr_paths[:1], npz_paths[:1]):
+    for zarr_path in zarr_paths:
+        try:
+            pkl_file = utils.find_input_paths(directory = zarr_path, return_file = True, endswith='.pkl')
+        except:
+            pkl_file = None
+        
+        try:
+            npz_file = utils.find_input_paths(directory = zarr_path, return_file = True, endswith='.npz')
+        except:
+            npz_file = None
+
         start_time = time.time()  # Start the timer
 
-        me_pca = PCAgenerator(zarr_path, npz_path, use_cropped_frames=True, standardize4PCA=False) 
+        me_pca = PCAgenerator(zarr_path = zarr_path, pkl_file = pkl_file, npz_path=npz_file, use_cropped_frames=True, standardize4PCA=False) 
         
         me_pca, post_crop_frames_me = me_pca._apply_pca_to_motion_energy_without_dask()
 
