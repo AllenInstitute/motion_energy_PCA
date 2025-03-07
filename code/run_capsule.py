@@ -16,7 +16,6 @@ def run():
             pkl_file = utils.find_input_paths(directory = zarr_path, return_file = True, endswith='.pkl')
         except:
             pkl_file = None
-        
         try:
             npz_file = utils.find_input_paths(directory = zarr_path, return_file = True, endswith='.npz')
         except:
