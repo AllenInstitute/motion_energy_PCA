@@ -22,47 +22,77 @@ class PCAgenerator:
     including cropping, standardization, and chunk-wise processing.
     """
 
-    def __init__(self, motion_zarr_path: str, npz_path: str, crop: bool = None, crop_region: tuple = None,
-                 standardize4PCA: bool = True, standardizeMasks: bool = False):
+    def __init__(self, motion_zarr_path: str, pkl_file: str = None, npz_file: str = None, use_cropped_frames: bool = True, recrop: bool = None, crop_region: tuple = None,
+                 standardize4PCA: bool = False):
         """
         Initialize PCA Generator.
 
         Args:
             motion_zarr_path (str): Path to the Zarr dataset containing motion energy frames.
-            crop (bool, optional): Whether to crop frames before PCA. Defaults to None.
+            recrop (bool, optional): Whether to crop frames before PCA. Defaults to None.
             crop_region (tuple, optional): Crop region as (y_start, x_start, y_end, x_end).
             standardize4PCA (bool, optional): If True, standardizes frames before PCA. Defaults to True.
             standardizeMasks (bool, optional): If True, standardizes masks when plotting. Defaults to False.
         """
         self.motion_zarr_path = motion_zarr_path
-        self.npz_path = npz_path
-        self.crop = crop
+        self.pkl_file = pkl_file
+        self.npz_file = npz_file
+        self.recrop = recrop
         self.crop_region = crop_region
+        self.use_cropped_frames = use_cropped_frames
         self.n_components = 100  # Number of PCA components
         self.n_to_plot = 3  # Number of components to visualize
         self.standardize4PCA = standardize4PCA
-        self.standardizeMasks = standardizeMasks
         self.chunk_size = 100
         self.start_index = 0  # First frame with data info should have been dropped when me was computed
         self.mean = None
         self.std = None
-
         self._load_metadata()
-        if crop is None:
-            self.crop = self.loaded_metadata.get('crop', False)
-        
-        self._get_motion_energy_trace()
+        self.me_metadata['crop'] = True # find why it was saved as False
+        #self._compare_crop_settings()
+        #self._get_motion_energy_trace()
+
+    
+    def _compare_crop_settings(self) -> None:
+        """
+        Compares the current crop settings with the metadata and determines
+        whether cropping should be applied or skipped.
+        """
+        if self.recrop is True:
+            if self.crop_region is None:
+                raise ValueError("Crop region cannot be None when crop is set to True")
+            
+            if self.me_metadata.get("crop") is True:
+                if str(self.crop_region) == str(self.me_metadata.get("crop_region")):
+                    print("Skipping cropping since frames were already cropped to the right size in Motion Energy Capsule.")
+                    self.use_cropped_frames = True
+                else:
+                    print("Re-cropping frames since the new crop region differs from the one provided in Motion Energy Capsule.")
+
+        elif self.recrop is None:
+            if self.me_metadata.get("crop") is True:
+                self.use_cropped_frames = True
+                print("Crop was not specified, using cropped frames from Motion Energy Capsule.")
+            elif self.me_metadata.get("crop") is False:
+                print("Computing PCA on full frames.")
+
+        return self
 
     def _load_metadata(self) -> None:
         """Load metadata from the Zarr store."""
         root_group = zarr.open_group(self.motion_zarr_path, mode='r')
-        self.loaded_metadata = json.loads(root_group.attrs['metadata'])
+        all_metadata = json.loads(root_group.attrs['metadata'])
+        self.video_metadata = all_metadata.get('video_metadata')
+        me_metadata = all_metadata.pop('video_metadata',None) #remove video metadata
+        self.me_metadata = me_metadata
         logger.info("Metadata loaded successfully.")
+
+        return self
 
     def _define_crop_region(self, crop_region: tuple = None) -> None:
         """Define and validate the crop region."""
         if crop_region is None:
-            crop_region = self.loaded_metadata.get('crop_region', (100, 100, 200, 300))
+            crop_region = self.video_metadata.get('crop_region', (100, 100, 200, 300))
             logger.warning(f"Crop region not found in metadata, defaulting to {crop_region}")
 
         y, x, height, width = crop_region
@@ -79,18 +109,22 @@ class PCAgenerator:
         # Load motion energy frames from Zarr
         me_store = zarr.DirectoryStore(self.motion_zarr_path)
         zarr_group = zarr.open(me_store, mode='r')
-        frames_me = zarr_group['data']
+        if self.use_cropped_frames:
+            frames_me = zarr_group['cropped_frames']
+        else:
+            frames_me = zarr_group['full_frames']
         logger.info(f"Loaded motion energy frames with shape {frames_me.shape}")
 
         # Define PCA components
         n_components = self.n_components or 100
 
         # Apply cropping if needed
-        if self.crop:
-            if self.crop_region is None:
-                self._define_crop_region()
-            crop_y_start, crop_x_start, crop_y_end, crop_x_end = self.crop_region
-            frames_me = frames_me[:, crop_y_start:crop_y_end, crop_x_start:crop_x_end]
+        if self.recrop and self.use_cropped_frames is False:
+            if not self.crop_region:
+                raise ValueError("Crop region cannot be None or empty when crop is set to True")
+            else:
+                crop_y_start, crop_x_start, crop_y_end, crop_x_end = self.crop_region
+                frames_me = frames_me[:, crop_y_start:crop_y_end, crop_x_start:crop_x_end]
 
         # Standardize if required (see below)
         if self.standardize4PCA:
@@ -157,6 +191,7 @@ class PCAgenerator:
         logger.info(f"PCA transformation complete. Output shape: {pca_motion_energy.shape}")
         self.pca = ipca
         self.pca_motion_energy = pca_motion_energy
+        self.explained_variance = ipca.explained_variance_ratio_
 
         return self, frames_me
 
@@ -224,7 +259,6 @@ class PCAgenerator:
             ValueError: If array dimensions do not match expectations.
         """
 
-        example_frame_index = 10
         # Ensure correct dimensions
         if pca_motion_energy.ndim != 2:
             raise ValueError("pca_motion_energy must be a 2D array (n_samples, n_components).")
@@ -239,13 +273,8 @@ class PCAgenerator:
         logger.info(f"Number of PCA components: {pca_motion_energy.shape[1]}")
         logger.info(f"Total frames available: {post_crop_frames_me.shape[0] - self.start_index}")
 
-        # Standardization flag
-        if self.standardizeMasks:
-            logger.info("Standardizing PC mask values for plotting.")
-        else:
-            logger.info("Skipping standardization of PC masks.")
-
-        self.example_frame = post_crop_frames_me[example_frame_index]
+        
+        self.mean_me_frame = np.mean(post_crop_frames_me[100:200], axis=0)
         # Iterate over the first n principal components
         for pc_index in range(n_components):
             logger.info(f"Processing Principal Component {pc_index + 1}...")
@@ -290,234 +319,11 @@ class PCAgenerator:
             # Compute the mean spatial mask
             mean_mask = mask_sum / count
 
-            # Standardize if required
-            if self.standardizeMasks:
-                mean_mask = self._standardize_mean_mask(mean_mask)
-
             # Store the mask
             spatial_masks.append(mean_mask)
 
         spatial_masks = np.array(spatial_masks)
         return spatial_masks
-
-    # def _crop_frames(self, frames_me: np.ndarray) -> tuple[np.ndarray, int, int]:
-    #     """
-    #     Crops the input frames based on the defined crop region.
-
-    #     Args:
-    #         frames_me (numpy.ndarray): 3D array of frames with shape (num_frames, height, width).
-
-    #     Returns:
-    #         tuple: (Cropped frames, Cropped height, Cropped width).
-
-    #     Raises:
-    #         AttributeError: If `self.crop_region` is not defined.
-    #     """
-    #     if not hasattr(self, 'crop_region') or self.crop_region is None:
-    #         raise AttributeError("Crop region is not defined. Ensure `_define_crop_region()` is called before cropping.")
-
-    #     crop_y_start, crop_x_start, crop_y_end, crop_x_end = self.crop_region
-
-    #     # Perform cropping
-    #     frames_me = frames_me[:, crop_y_start:crop_y_end, crop_x_start:crop_x_end]
-    #     H = crop_y_end - crop_y_start
-    #     W = crop_x_end - crop_x_start
-
-    #     logger.info(f"Cropped frames to shape: {frames_me.shape} (Height: {H}, Width: {W})")
-    #     return frames_me, H, W
-
-
-    def _standardize_mean_mask(self, mean_mask: np.ndarray) -> np.ndarray:
-        """
-        Standardizes the mean mask by subtracting its mean and dividing by its standard deviation.
-
-        Args:
-            mean_mask (numpy.ndarray): The input 2D mask to be standardized.
-
-        Returns:
-            numpy.ndarray: Standardized mean mask.
-
-        Raises:
-            ValueError: If standard deviation is zero, leading to division errors.
-        """
-        if not isinstance(mean_mask, np.ndarray):
-            raise TypeError("mean_mask must be a NumPy array.")
-
-        mean = mean_mask.mean()
-        std = mean_mask.std()
-
-        # Validate standard deviation
-        if std == 0:
-            raise ValueError("Standard deviation is zero, leading to division errors!")
-
-        # Standardize the mean mask
-        mean_mask = (mean_mask - mean) / std
-
-        # Check for NaN values after standardization
-        nan_count = np.isnan(mean_mask).sum()
-        if nan_count > 0:
-            logger.warning(f"Standardized mean mask contains {nan_count} NaN values.")
-
-        return mean_mask
-
-
-    def _plot_spatial_masks(self) -> plt.Figure:
-        """
-        Plots spatial masks corresponding to principal components.
-
-        Returns:
-            matplotlib.figure.Figure: The figure containing the spatial masks.
-
-        Raises:
-            AttributeError: If `self.spatial_masks` is missing or None.
-        """
-        if not hasattr(self, 'spatial_masks') or self.spatial_masks is None:
-            raise AttributeError("spatial_masks attribute is missing or None. Run PCA before plotting.")
-
-        if not isinstance(self.spatial_masks, np.ndarray):
-            raise TypeError("spatial_masks must be a NumPy array.")
-
-        n_components = self.n_to_plot
-        fig,axes = plt.subplots(figsize=(3 * (n_components + 1), 3), nrows = 1, ncols = 4)  # Extra space for the example frame
-
-        # Plot the example frame
-        ax = fig.add_subplot(1, n_components + 1, 1)
-        im = ax.imshow(self.example_frame, cmap='gray', aspect='auto')
-        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        ax.axis('off')
-        ax.set_title(f'Example Frame', fontsize=10)
-
-        for i, (ax, mask) in enumerate(zip(axes[1:], self.spatial_masks)):
-            im = ax.imshow(mask, cmap='bwr', aspect='auto', vmin=-1, vmax=1)
-            plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-            ax.axis('off')
-            ax.set_title(f'PC {i + 1} mask')
-
-        plt.tight_layout()
-        plt.show()
-
-        return fig
-
-
-    def _plot_explained_variance(self) -> plt.Figure:
-        """
-        Plots the explained variance ratio of each principal component from a PCA model.
-
-        Returns:
-            matplotlib.figure.Figure: The figure containing the explained variance plot.
-
-        Raises:
-            ValueError: If PCA model has not been fitted.
-        """
-        if not hasattr(self.pca, 'explained_variance_ratio_'):
-            raise ValueError("PCA object must be fitted before plotting.")
-
-        fig, ax = plt.subplots(figsize=(4, 3))
-        explained_variance = self.pca.explained_variance_ratio_ * 100
-
-        ax.plot(range(1, len(explained_variance) + 1), explained_variance, 'o-', linewidth=2, markersize=5)
-        ax.set_title('Variance Explained by Principal Components', fontsize=12)
-        ax.set_xlabel('Principal Component', fontsize=12)
-        ax.set_ylabel('Explained Variance (%)', fontsize=12)
-        ax.set_xlim([0, 30])  # Show only top 30 components
-        plt.tight_layout()
-        plt.show()
-
-        return fig
-
-
-    def _plot_pca_components_traces(self, component_indices: list = [0, 1, 2], remove_outliers: bool = False, axes=None) -> plt.Figure:
-        """
-        Plots PCA components against time.
-
-        Args:
-            component_indices (list, optional): Indices of PCA components to plot. Defaults to [0, 1, 2].
-            remove_outliers (bool, optional): Whether to remove outliers above 99%. Defaults to True.
-            axes (matplotlib.axes.Axes, optional): Axes for plotting. Defaults to None.
-
-        Returns:
-            matplotlib.figure.Figure: The figure containing PCA component traces.
-
-        Raises:
-            ValueError: If PCA motion energy data is missing or has fewer than three components.
-            AssertionError: If timestamps and PCA traces have different lengths.
-        """
-        if not hasattr(self, 'pca_motion_energy') or self.pca_motion_energy is None:
-            raise ValueError("PCA motion energy data is missing. Run PCA before plotting.")
-
-        if self.pca_motion_energy.shape[1] < 3:
-            raise ValueError("pca_motion_energy must have at least 3 components to plot.")
-
-        fps = self.loaded_metadata.get('fps', 60)  # Default FPS to 60 if missing
-        x_range = min(10000, self.pca_motion_energy.shape[0])  # Ensure range doesn't exceed available data
-        x_trace_seconds = np.round(np.arange(0, x_range) / fps, 2)
-
-        if axes is None:
-            fig, axes = plt.subplots(len(component_indices), 1, figsize=(15, 2 * len(component_indices)))
-
-        for i, ax in enumerate(axes):
-            pc_trace = self.pca_motion_energy[:x_range, component_indices[i]]
-            if remove_outliers:
-                pc_trace = utils.remove_outliers_99(pc_trace)
-
-            assert len(x_trace_seconds) == len(pc_trace), "Timestamps and PC trace lengths do not match."
-
-            ax.plot(x_trace_seconds, pc_trace)
-            ax.set_ylabel(f'PCA {component_indices[i] + 1}', fontsize=16)
-            ax.set_title(f'PCA {component_indices[i] + 1} over time (s)', fontsize=20)
-            ax.tick_params(axis='both', which='major', labelsize=14)
-            ax.grid(True)
-
-        axes[-1].set_xlabel('Time (s)', fontsize=16)
-        plt.tight_layout()
-        return fig
-
-    def _get_motion_energy_trace(self):
-            npz_data = np.load(self.npz_path)
-
-        if not npz_data:
-            raise ValueError("No data found in the NPZ file.")
-
-        array_name = list(npz_data.keys())[0]
-
-        if array_name not in npz_data:
-            raise ValueError(f"Array '{array_name}' not found in the NPZ file. Available arrays: {list(npz_data.keys())}")
-
-        array = npz_data[array_name]
-
-        self.motion_energy_trace = array
-        return self
-        
-
-    def _plot_motion_energy_trace(self, remove_outliers: bool = True) -> plt.Figure:
-        """
-        Creates a figure and plots a NumPy array from an NPZ file.
-
-        Args:
-
-        Returns:
-            plt.Figure: The matplotlib figure object.
-
-        Raises:
-            ValueError: If the specified array name is not found.
-        """
-
-        if remove_outliers:
-            array = utils.remove_outliers_99(self.array)
-        else:
-            self.array
-
-        fig, ax = plt.subplots(figsize=(15, 6))
-        ax.plot(array, label=f"{array_name}")
-        ax.set_title(f"Array {array_name} from NPZ")
-        ax.set_xlabel("Index")
-        ax.set_ylabel("Value")
-        ax.legend()
-        ax.grid(True)
-
-        logger.info(f"Plotted array: {array_name}")
-
-        return fig  
 
 
     def _save_results(self) -> None:
@@ -533,7 +339,7 @@ class PCAgenerator:
         logger.info("Saving PCA results...")
 
         # Construct results folder path
-        top_results_folder = utils.construct_results_folder(self.loaded_metadata)
+        top_results_folder = utils.construct_results_folder(self.video_metadata)
         self.top_results_path = os.path.join(utils.get_results_path(), top_results_folder)
 
         # Ensure directory exists before saving
@@ -543,6 +349,13 @@ class PCAgenerator:
         save_path = os.path.join(self.top_results_path, "fit_motion_energy_pca.pkl")
         with open(save_path, "wb") as f:
             pickle.dump(utils.object_to_dict(self), f)
+        logger.info(f"PCA dictionary saved at: {save_path}")
+        try:
+            # Save PCA object to a file
+            save_path = os.path.join(self.top_results_path, "pca_model.pkl")
+            with open(save_path, "wb") as f:
+                pickle.dump(self.pca, f)
+        except:
+            logger.info("Could not save pca object")
 
-        logger.info(f"PCA results saved at: {save_path}")
         return self
