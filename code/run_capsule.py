@@ -8,10 +8,11 @@ from pathlib import Path
 DATA_PATH = utils.get_data_path(pipeline=True)
 DATA_PATH = Path("/data/Thyme_ME_results/")
 zarr_paths = utils.find_input_paths(directory = DATA_PATH, return_file=False, endswith='zarr')
-
+print(len(zarr_paths))
 def run():
     #for zarr_path, npz_path in zip(zarr_paths[:1], npz_paths[:1]):
     for zarr_path in zarr_paths[:1]:
+        print(zarr_path)
         try:
             pkl_file = utils.find_input_paths(directory = zarr_path, return_file = True, endswith='.pkl')
         except:
