@@ -1,89 +1,159 @@
+import os
+import json
+import pickle
+import numpy as np
+from tqdm import tqdm
+import matplotlib.pyplot as plt
+from pathlib import Path
 
-def get_results_folder() -> str:
+def get_data_path(pipeline: bool = True) -> Path:
     """
-    Retrieve the path to the results folder. Modify this function as needed to fit your project structure.
+    Get the data folder path.
 
     Returns:
         str: Path to the results folder.
     """
-    # Placeholder implementation, update with actual results folder logic if needed
-    return '/root/capsule/results'
+    if pipeline:
+        return Path('/data/')
+    else:
+        return Path('/root/capsule/data')
 
-def get_zarr_path(metadata: dict, path_to: str = 'motion_energy') -> str:
+
+def get_results_folder(pipeline: bool = True) -> Path:
     """
-    Construct the path for saving Zarr storage based on metadata.
-
-    Args:
-        metadata (dict): A dictionary containing metadata such as 'mouse_id', 'camera_label', and 'data_asset_id'.
-        path_to (str): Specifies the type of frames to be saved ('gray_frames' or 'motion_energy_frames').
+    Get the results folder path.
 
     Returns:
-        str: Full path to the Zarr storage file.
+        str: Path to the results folder.
     """
-    zarr_folder = construct_zarr_folder(metadata)
-    zarr_path = os.path.join(get_results_folder(), zarr_folder)
+    if pipeline:
+        return Path('/results/')
+    else:
+        return Path('/root/capsule/results')
 
-    # Create the directory if it doesn't exist
-    os.makedirs(zarr_path, exist_ok=True)
 
-    filename = 'processed_frames_zarr' if path_to == 'gray_frames' else 'motion_energy_frames.zarr'
-    return os.path.join(zarr_path, filename)
-
-def get_data_path(metadata: dict) -> str:
+def find_input_paths(directory: Path = Path(), return_file = False, tag: str = '', endswith = '') -> list:
     """
-    Construct the path for data storage based on metadata.
+    Retrieve paths to Zarr directories within the specified directory, optionally filtered by a subdirectory.
 
     Args:
-        metadata (dict): A dictionary containing metadata such as 'mouse_id', 'camera_label', and 'data_asset_id'.
+        directory (Path): The base directory to search for Zarr files.
+        tag (str): str tag in video filename to include. (not being used)
 
     Returns:
-        str: Full path to the data storage folder.
+        list: A list of paths to Zarr directories.
     """
-    data_folder = construct_zarr_folder(metadata)
-    data_path = os.path.join(get_results_folder(), data_folder)
+    input_paths = []
+    for root, dirs, files in os.walk(directory):
+        if return_file is False:
+            for d in tqdm(dirs, desc=f"Searching for Zarr directories in {root}"):
+                #print(f'.....directory {d}.....')
+                if endswith in d:
+                    full_path = os.path.join(root, d)
+                    print(f"\n.  Found {endswith} directory: {full_path}")
+                    input_paths.append(full_path)
+        else:
+            for f in tqdm(files, desc=f"Searching for files in {root}"):
+                #print(f'.....file {f}.....')
+                if endswith in f:
+                    full_path = os.path.join(root, f)
+                    print(f"\n.  Found {endswith} file: {full_path}")
+                    input_paths.append(full_path)
+   
+    return input_paths
 
-    # Create the directory if it doesn't exist
-    os.makedirs(data_path, exist_ok=True)
 
-    return data_path
-
-
-def construct_zarr_folder(metadata: dict) -> str:
+def load_pickle_file(file_path: str):
     """
-    Construct the folder name for Zarr storage based on metadata.
+    Load a pickle file and return the deserialized object.
 
     Args:
-        metadata (dict): A dictionary containing 'mouse_id', 'camera_label', and 'data_asset_id'.
+        file_path (str): The path to the pickle file.
+
+    Returns:
+        object: The deserialized Python object.
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        ValueError: If the file is corrupted or not a valid pickle file.
+    """
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"The file at '{file_path}' does not exist.")
+
+    try:
+        with open(file_path, 'rb') as file:
+            return pickle.load(file)
+    except (pickle.UnpicklingError, EOFError) as e:
+        raise ValueError(f"Error loading pickle file: {e}")
+
+
+def construct_results_folder(metadata: dict) -> str:
+    """
+    Construct a folder name for results storage based on metadata.
+
+    Args:
+        metadata (dict): Dictionary containing 'mouse_id', 'camera_label', and 'data_asset_name'.
 
     Returns:
         str: Constructed folder name.
+
+    Raises:
+        KeyError: If required metadata fields are missing.
     """
     try:
-        return f"{metadata['mouse_id']}_{metadata['camera_label']}_{metadata['data_asset_id']}"
+        return f"{metadata['mouse_id']}_{metadata['data_asset_name']}_{metadata['camera_label']}_PCA"
     except KeyError as e:
         raise KeyError(f"Missing required metadata field: {e}")
 
-
-def save_video(frames, video_path = '', video_name='motion_energy_clip.avi', fps=60, num_frames = 1000):
+def object_to_dict(obj):
     """
-    Save the provided frames to a video file using OpenCV.
+    Recursively converts an object to a dictionary.
+
+    Args:
+        obj: The object to convert.
+
+    Returns:
+        dict: The dictionary representation of the object.
     """
-    
-    output_video_path = os.path.join(video_path, video_name)
-    # Get frame shape and number of frames
-    print(type(frames))
-    _, frame_height, frame_width = frames.shape
+    if hasattr(obj, "__dict__"):
+        return {key: object_to_dict(value) for key, value in vars(obj).items()}
+    if isinstance(obj, list):
+        return [object_to_dict(item) for item in obj]
+    if isinstance(obj, dict):
+        return {key: object_to_dict(value) for key, value in obj.items()}
+    return obj
 
-    # Specify the codec and create the VideoWriter object
-    fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    out = cv2.VideoWriter(output_video_path, fourcc, fps, (frame_width, frame_height), isColor=False)
 
-    # Process and write each frame to the video file
-    for i in range(5000, num_frames+5000):
-        frame = frames[i].compute()  # Compute the frame to load it into memory
-        frame = frame.astype('uint8')  # Ensure the frame is of type uint8 for video
-        out.write(frame)  # Write the frame to the video file
 
-    # Release the video writer
-    out.release()
-    print(f"Video saved to '{output_video_path}'")
+
+# def find_files(directory: Path, endswith: str ) -> list:
+#     return [
+#         str(p) for p in directory.rglob(endswith)
+#     ]
+
+# def find_files_old(root_dir: Path, endswith: str = '', return_dir: bool = True) -> list:
+#     """
+#     Recursively search for files or directories ending with a specific string in a given root directory.
+
+#     Args:
+#         root_dir (str): Root directory to search.
+#         endswith (str, optional): Suffix to filter files or directories. Defaults to '' (no filtering).
+#         return_dir (bool, optional): If True, returns directories. If False, returns files. Defaults to True.
+
+#     Returns:
+#         list: List of paths to the found files or directories.
+#     """
+#     collected_files = []
+
+#     for root, dirs, files in os.walk(root_dir):
+#         print(f'{root}, {dirs}, {files}')
+#         if return_dir:
+#             for d in tqdm(dirs, desc=f"Searching for Zarr directories in {root}"):
+#                 if d.endswith(endswith):
+#                     collected_files.append(os.path.join(root, d))
+#         else:
+#             for f in tqdm(files, desc=f"Searching for Zarr files in {root}"):
+#                 if f.endswith(endswith):
+#                     collected_files.append(os.path.join(root, f))
+
+#     return collected_files
