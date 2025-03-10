@@ -12,13 +12,13 @@ print(len(zarr_paths))
 def run():
     #for zarr_path, npz_path in zip(zarr_paths[:1], npz_paths[:1]):
     for zarr_path in zarr_paths[:1]:
-        print(zarr_path)
+        print(f'...Loading {zarr_path}')
         try:
-            pkl_file = utils.find_input_paths(directory = zarr_path, return_file = True, endswith='.pkl')
+            pkl_file = utils.find_input_paths(directory = zarr_path, return_file = True, endswith='.pkl')[0]
         except:
             pkl_file = None
         try:
-            npz_file = utils.find_input_paths(directory = zarr_path, return_file = True, endswith='.npz')
+            npz_file = utils.find_input_paths(directory = zarr_path, return_file = True, endswith='.npz')[0]
         except:
             npz_file = None
 
