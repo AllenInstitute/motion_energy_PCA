@@ -31,35 +31,34 @@ def get_results_folder(pipeline: bool = True) -> Path:
     else:
         return Path('/root/capsule/results')
 
-def find_zarr_paths(directory: Path = Path(), subselect: str = '', tag: str = '') -> list:
-    """
-    Retrieve paths to Zarr directories within the specified directory, optionally filtered by a subdirectory.
+import os
 
-    Args:
-        directory (Path): The base directory to search for Zarr files.
-        subselect (str): Optional subdirectory name to filter the search.
-        tag (str): str tag in video filename to include. (not being used)
+def find_zarr_file(root_dir, target_filename="motion_energy_frames.zarr"):
+    """
+    Recursively searches for a specified .zarr file within a directory.
+
+    Parameters:
+    - root_dir (str): The root directory to start the search.
+    - target_filename (str): The name of the .zarr file to search for.
 
     Returns:
-        list: A list of paths to Zarr directories.
+    - str: The full path to the found .zarr file, or None if not found.
     """
-    zarr_paths = []
-    for root, dirs, _ in os.walk(directory):
-        print(dirs)
-        if subselect not in root:
-            continue  # Skip directories that don't match the subselect filter
-        
-        
-        for dir in tqdm(dirs, desc=f"Searching for Zarr directories in {root}"):
-            for r,D,f in os.walk(dir):
-                print(D)
-                for d in D:
-                    if 'zarr' in d:
-                        full_path = os.path.join(root, d)
-                        print(f"\nFound Zarr directory: {full_path}")
-                        zarr_paths.append(full_path)
+    for dirpath, dirnames, filenames in os.walk(root_dir):
+        if target_filename in dirnames:  # Zarr directories are treated as folders
+            return os.path.join(dirpath, target_filename)
+    
+    return None  # If not found
 
-    return zarr_paths
+# Example usage
+root_directory = "/data/Thyme_ME_results"
+zarr_file_path = find_zarr_file(root_directory)
+
+if zarr_file_path:
+    print(f"Found Zarr file: {zarr_file_path}")
+else:
+    print("Zarr file not found.")
+
 
 def find_input_paths(directory: Path = Path(), return_file = False, tag: str = '', endswith = '') -> list:
     """
