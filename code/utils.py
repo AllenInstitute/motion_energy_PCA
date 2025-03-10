@@ -49,10 +49,6 @@ def find_zarr_file(root_dir, target_filename="motion_energy_frames.zarr"):
             zarr_file_path=[Path(dirpath, target_filename)]
             print("\n Directory")
             return(zarr_file_path)
-        if target_filename in filenames:  # Zarr directories are treated as folders
-            zarr_file_path=[Path(dirpath, target_filename)]
-            return(zarr_file_path)
-            print("\n File")
     
     return None
 

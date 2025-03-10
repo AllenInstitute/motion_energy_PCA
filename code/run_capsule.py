@@ -21,6 +21,7 @@ def run():
         print(f'...Loading {zarr_path}')
         try:
             pkl_file = utils.find_input_paths(directory = zarr_path.parent, return_file = True, endswith='.pkl')[0]
+            print(f{pkl_file})
         except:
             pkl_file = None
         try:
