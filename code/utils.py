@@ -50,11 +50,14 @@ def find_zarr_paths(directory: Path = Path(), subselect: str = '', tag: str = ''
             continue  # Skip directories that don't match the subselect filter
         
         
-        for d in tqdm(dirs, desc=f"Searching for Zarr directories in {root}"):
-            if 'zarr' in d:
-                full_path = os.path.join(root, d)
-                print(f"\nFound Zarr directory: {full_path}")
-                zarr_paths.append(full_path)
+        for dir in tqdm(dirs, desc=f"Searching for Zarr directories in {root}"):
+            for r,D,f in os.walk(dir):
+                print(D)
+                for d in D:
+                    if 'zarr' in d:
+                        full_path = os.path.join(root, d)
+                        print(f"\nFound Zarr directory: {full_path}")
+                        zarr_paths.append(full_path)
 
     return zarr_paths
 
