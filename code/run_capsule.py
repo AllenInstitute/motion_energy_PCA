@@ -14,7 +14,7 @@ if zarr_paths:
     print(len(zarr_paths))
 else:
     print("\n Zarr path not found")
-    zarr_path = []
+    zarr_paths = []
 def run():
     #for zarr_path, npz_path in zip(zarr_paths[:1], npz_paths[:1]):
     for zarr_path in zarr_paths:
