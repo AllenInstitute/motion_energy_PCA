@@ -45,13 +45,12 @@ def find_zarr_file(root_dir, target_filename="motion_energy_frames.zarr"):
     - str: The full path to the found .zarr file, or None if not found.
     """
     for dirpath, dirnames, filenames in os.walk(root_dir):
-        print(filenames)
         if target_filename in dirnames:  # Zarr directories are treated as folders
-            zarr_file_path=Path(dirpath, target_filename)
+            zarr_file_path=[Path(dirpath, target_filename)]
             print("\n Directory")
             return(zarr_file_path)
         if target_filename in filenames:  # Zarr directories are treated as folders
-            zarr_file_path=Path(dirpath, target_filename)
+            zarr_file_path=[Path(dirpath, target_filename)]
             return(zarr_file_path)
             print("\n File")
     
