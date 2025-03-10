@@ -81,7 +81,12 @@ class PCAgenerator:
     def _load_metadata(self) -> None:
         """Load metadata from the Zarr store."""
         root_group = zarr.open_group(self.motion_zarr_path, mode='r')
-        all_metadata = json.loads(root_group.attrs['metadata'])
+        metadata_str = root_group.attrs.get('metadata', None)
+        if metadata_str is None:
+            print("Metadata attribute not found in root_group.attrs. Will load metadata via pkl file.")
+            all_metadata = load_pickle_file(self.pkl_file)
+        else:
+            all_metadata = json.loads(metadata_str)
         self.video_metadata = all_metadata.get('video_metadata')
         me_metadata = all_metadata.pop('video_metadata',None) #remove video metadata
         self.me_metadata = me_metadata
