@@ -53,9 +53,6 @@ def find_zarr_file(root_dir, target_filename="motion_energy_frames.zarr"):
     
     return []  # If not found
 
-# Example usage
-root_directory = "/data/Thyme_ME_results"
-zarr_file_path = find_zarr_file(root_directory)
 
 if zarr_file_path:
     print(f"Found Zarr file: {zarr_file_path}")
