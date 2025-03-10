@@ -59,8 +59,6 @@ def find_zarr_file(root_dir, target_filename="motion_energy_frames.zarr"):
     return zarr_file_path 
 
 
-
-
 def find_input_paths(directory: Path = Path(), return_file = False, tag: str = '', endswith = '') -> list:
     """
     Retrieve paths to Zarr directories within the specified directory, optionally filtered by a subdirectory.
