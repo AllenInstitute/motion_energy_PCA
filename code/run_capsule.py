@@ -7,6 +7,7 @@ from pathlib import Path
 
 DATA_PATH = utils.get_data_path(pipeline=True)
 #DATA_PATH = Path("/data/")
+#zarr_paths = np.unique(utils.find_zarr_paths(DATA_PATH))
 zarr_paths = utils.find_input_paths(directory = DATA_PATH, return_file=False, endswith='zarr')
 print(len(zarr_paths))
 def run():
