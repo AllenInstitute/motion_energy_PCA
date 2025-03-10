@@ -48,14 +48,15 @@ def find_zarr_file(root_dir, target_filename="motion_energy_frames.zarr"):
     for dirpath, dirnames, filenames in os.walk(root_dir):
         print(filenames)
         if target_filename in dirnames:  # Zarr directories are treated as folders
-            zarr_file_path=os.path.join(dirpath, target_filename)
+            zarr_file_path=Path(dirpath, target_filename)
+            print("\n Directory")
+            return(zarr_file_path)
         if target_filename in filenames:  # Zarr directories are treated as folders
-            zarr_file_path=os.path.join(dirpath, target_filename)
+            zarr_file_path=Path(dirpath, target_filename)
+            return(zarr_file_path)
+            print("\n File")
     
-    if zarr_file_path:
-        print(f"Found Zarr file: {zarr_file_path}")
-    else:
-        print("Zarr file not found.")
+    print("Zarr file not found.")
     return zarr_file_path 
 
 
