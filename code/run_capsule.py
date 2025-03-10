@@ -4,6 +4,7 @@ import utils
 import time  # Added for timing
 from PCAgenerator import PCAgenerator
 from pathlib import Path
+import numpy as np
 
 DATA_PATH = utils.get_data_path(pipeline=True)
 #DATA_PATH = Path("/data/")
