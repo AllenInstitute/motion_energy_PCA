@@ -107,7 +107,7 @@ class PCAgenerator:
     def _define_crop_region(self, crop_region: tuple = None) -> None:
         """Define and validate the crop region."""
         if crop_region is None:
-            crop_region = self.video_metadata.get('crop_region', (200, 290, 280, 360))
+            crop_region = self.me_metadata.get('crop_region', (200, 290, 280, 360))
             logger.warning(f"Crop region not found in metadata, defaulting to {crop_region}")
 
         y, x, height, width = crop_region
