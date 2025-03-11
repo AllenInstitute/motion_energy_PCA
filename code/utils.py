@@ -33,26 +33,6 @@ def get_results_folder(pipeline: bool = True) -> Path:
 
 import os
 
-def find_zarr_file(root_dir, target_filename="motion_energy_frames.zarr"):
-    """
-    Recursively searches for a specified .zarr file within a directory.
-
-    Parameters:
-    - root_dir (str): The root directory to start the search.
-    - target_filename (str): The name of the .zarr file to search for.
-
-    Returns:
-    - str: The full path to the found .zarr file, or None if not found.
-    """
-    for dirpath, dirnames, filenames in os.walk(root_dir):
-        print(dirpath, dirnames, filenames)
-        if target_filename in dirnames:  # Zarr directories are treated as folders
-            zarr_file_path=[Path(dirpath, target_filename)]
-            print("\n Directory")
-            return(zarr_file_path)
-    
-    return None
-
 
 def find_input_paths(directory: Path = Path(), return_file = False, tag: str = '', endswith = '') -> list:
     """
