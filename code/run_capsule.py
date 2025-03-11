@@ -5,7 +5,7 @@ import time  # Added for timing
 from PCAgenerator import PCAgenerator
 from pathlib import Path
 import numpy as np
-/data/Thyme_all_sessions_ME_fixed/736963_multiplane-ophys_736963_2024-07-09_09-13-58_Face_motion_energy/motion_energy_frames.zarr
+
 DATA_PATH = utils.get_data_path(pipeline=True)
 zarr_paths = list(Path().glob("/data/Thyme_all_sessions_ME_fixed/736963_*_Face_motion_energy/motion_energy_frames.zarr"))
 
