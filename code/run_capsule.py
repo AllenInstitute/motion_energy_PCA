@@ -7,21 +7,15 @@ from pathlib import Path
 import numpy as np
 
 DATA_PATH = utils.get_data_path(pipeline=True)
-#DATA_PATH = Path("/data/")
-zarr_paths = utils.find_zarr_file(DATA_PATH)
-#zarr_paths = utils.find_input_paths(directory = DATA_PATH, return_file=False, endswith='zarr')
-if zarr_paths:
-    print(len(zarr_paths))
-else:
-    print("\n Zarr path not found")
-    zarr_paths = []
+zarr_paths = list(Path(DATA_PATH).glob("*/motion_energy_frames.zarr"))
+print(f"paths to zarr files: {zarr_paths}")
 def run():
     #for zarr_path, npz_path in zip(zarr_paths[:1], npz_paths[:1]):
     for zarr_path in zarr_paths:
         print(f'...Loading {zarr_path}')
         try:
             pkl_file = utils.find_input_paths(directory = zarr_path.parent, return_file = True, endswith='.pkl')[0]
-            print(f'{pkl_file}')
+            print(f'Pickle file: {pkl_file}')
         except:
             pkl_file = None
         try:

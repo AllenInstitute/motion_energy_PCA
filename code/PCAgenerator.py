@@ -345,7 +345,7 @@ class PCAgenerator:
 
         # Construct results folder path
         top_results_folder = utils.construct_results_folder(self.video_metadata)
-        self.top_results_path = os.path.join(utils.get_results_path(), top_results_folder)
+        self.top_results_path = os.path.join(utils.get_results_folder(), top_results_folder)
 
         # Ensure directory exists before saving
         os.makedirs(self.top_results_path, exist_ok=True)
