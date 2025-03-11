@@ -84,20 +84,30 @@ class PCAgenerator:
         metadata_str = root_group.attrs.get('metadata', None)
         if metadata_str is None:
             print("Metadata attribute not found in root_group.attrs. Will load metadata via pkl file.")
-            all_metadata = utils.load_pickle_file(self.pkl_file)
+            try:
+                all_metadata = utils.load_pickle_file(self.pkl_file)
+                self.video_metadata = all_metadata.get('video_metadata')
+                me_metadata = all_metadata.pop('video_metadata',None) #remove video metadata
+                self.me_metadata = me_metadata
+                logger.info("Metadata loaded successfully.")
+            except TypeError:
+                print(f'no pickle file in this dataset {self.zarr_file_path}')
+                print('Will try to run without metadata')
+                self.video_metadata = {}
+                self.me_metadata = {}
         else:
             all_metadata = json.loads(metadata_str)
-        self.video_metadata = all_metadata.get('video_metadata')
-        me_metadata = all_metadata.pop('video_metadata',None) #remove video metadata
-        self.me_metadata = me_metadata
-        logger.info("Metadata loaded successfully.")
+            self.video_metadata = all_metadata.get('video_metadata')
+            me_metadata = all_metadata.pop('video_metadata',None) #remove video metadata
+            self.me_metadata = me_metadata
+            logger.info("Metadata loaded successfully.")
 
         return self
 
     def _define_crop_region(self, crop_region: tuple = None) -> None:
         """Define and validate the crop region."""
         if crop_region is None:
-            crop_region = self.video_metadata.get('crop_region', (100, 100, 200, 300))
+            crop_region = self.video_metadata.get('crop_region', (200, 290, 280, 360))
             logger.warning(f"Crop region not found in metadata, defaulting to {crop_region}")
 
         y, x, height, width = crop_region
