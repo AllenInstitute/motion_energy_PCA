@@ -91,7 +91,7 @@ class PCAgenerator:
                 self.me_metadata = me_metadata
                 logger.info("Metadata loaded successfully.")
             except TypeError:
-                print(f'no pickle file in this dataset {self.zarr_file_path}')
+                print(f'no pickle file in this dataset {self.motion_zarr_path}')
                 print('Will try to run without metadata')
                 self.video_metadata = {}
                 self.me_metadata = {}
