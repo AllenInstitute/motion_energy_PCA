@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 
 DATA_PATH = utils.get_data_path(pipeline=True)
-zarr_paths = list(Path("/capsule/data/").glob("*/motion_energy_frames.zarr"))
+zarr_paths = list(Path("/data/").glob("*/motion_energy_frames.zarr"))
 
 print(f"paths to zarr files: {zarr_paths}")
 def run():
