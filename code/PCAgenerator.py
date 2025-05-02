@@ -229,6 +229,7 @@ class PCAgenerator:
             "video_metadata": self.video_metadata,
             "me_metadata": self.me_metadata,
             "top_results_path": self.top_results_path,
+            "pcs": self.pca_motion_energy,
         }
         json_path = os.path.join(self.top_results_path, "pca_generator_metadata.json")
         with open(json_path, "w") as f:
