@@ -5,7 +5,7 @@ from PCAgenerator import PCAgenerator
 from pathlib import Path
 
 DATA_PATH = Path("/data")
-video_paths = list(DATA_PATH.rglob("**motion_energy.mp4"))
+video_paths = list(DATA_PATH.rglob("**/*motion_energy.mp4"))
 print(f"found {len(video_paths)} motion energy videos")
 def run():
     for video_path in tqdm(video_paths):
