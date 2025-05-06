@@ -1,0 +1,9 @@
+{
+	"version": 1,
+	"attached_datasets": [
+		{
+			"id": "5cd795f6-45ae-44dd-92f9-bfa31798f2ac",
+			"mount": "behavior_video_motion_energy_capsule_test"
+		}
+	]
+}

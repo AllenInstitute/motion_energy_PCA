@@ -1,40 +1,26 @@
-import os
+
 from tqdm import tqdm
-import utils
 import time  # Added for timing
 from PCAgenerator import PCAgenerator
 from pathlib import Path
-import numpy as np
 
-DATA_PATH = utils.get_data_path(pipeline=True)
-zarr_paths = list(Path("/data/").glob("*/motion_energy_frames.zarr"))
-
-print(f"paths to zarr files: {zarr_paths}")
+DATA_PATH = Path("/data")
+video_paths = list(Path("/data/").glob("*/*motion_energy.mp4"))
+print(f"found {len(video_path)} motion energy videos")
 def run():
-    #for zarr_path, npz_path in zip(zarr_paths[:1], npz_paths[:1]):
-    for zarr_path in zarr_paths:
-        print(f'...Loading {zarr_path}')
-        try:
-            pkl_file = utils.find_input_paths(directory = zarr_path.parent, return_file = True, endswith='.pkl')[0]
-            print(f'Pickle file: {pkl_file}')
-        except:
-            pkl_file = None
-        try:
-            npz_file = utils.find_input_paths(directory = zarr_path.parent, return_file = True, endswith='.npz')[0]
-        except:
-            npz_file = None
-
+    for video_path in tqdm(video_paths):
+        print(f'...Loading {video_path}')
+        
         start_time = time.time()  # Start the timer
 
-        me_pca = PCAgenerator(motion_zarr_path = zarr_path, pkl_file = pkl_file, npz_file=npz_file, use_cropped_frames=True, standardize4PCA=False) 
+        me_pca = PCAgenerator(video_path = video_path, standardize4PCA=False) 
         
-        me_pca, post_crop_frames_me = me_pca._apply_pca_to_motion_energy_without_dask()
+        me_pca, post_crop_frames_me = me_pca._apply_pca_to_motion_energy()
 
         me_pca._add_spatial_masks(me_pca.pca_motion_energy, post_crop_frames_me)
 
         me_pca._save_results()
         
-    
         end_time = time.time()  # End the timer
         duration = end_time - start_time
         print(f"Total time taken: {duration:.2f} seconds")

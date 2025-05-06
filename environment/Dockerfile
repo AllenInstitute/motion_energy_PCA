@@ -11,17 +11,11 @@ COPY git-askpass /
 ADD "https://github.com/coder/code-server/releases/download/v4.9.0/code-server-4.9.0-linux-amd64.tar.gz" /.code-server/code-server.tar.gz
 
 RUN pip3 install -U --no-cache-dir \
-	dask \
-	zarr \
-    matplotlib \
-	pandas \
+	opencv-python==4.10.0.84 \
 	scikit-learn \
-	seaborn \
 	scipy \ 
 	aind-codeocean-api \
     aind-codeocean-utils \
-    pyyaml \
-	dask_ml \
 	pytest
 
 RUN cd /.code-server \

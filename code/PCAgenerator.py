@@ -1,376 +1,248 @@
 import os
 import json
+import cv2
 import pickle
 import numpy as np
-import zarr
 from tqdm import tqdm
+from pathlib import Path
 from sklearn.decomposition import IncrementalPCA
 import logging
-import utils
-import matplotlib.pyplot as plt
+import utils  # assumes validate_frame, object_to_dict, construct_results_folder, get_results_folder are in utils.py
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
+RESULTS = "/results"
 class PCAgenerator:
     """
-    PCA Generator for motion energy data.
-
-    This class applies PCA to motion energy frames stored in a Zarr dataset,
-    including cropping, standardization, and chunk-wise processing.
+    PCA Generator for motion energy data from video files.
+    Applies PCA in chunks with optional standardization and computes spatial masks.
     """
 
-    def __init__(self, motion_zarr_path: str, pkl_file: str = None, npz_file: str = None, use_cropped_frames: bool = True, recrop: bool = None, crop_region: tuple = None,
-                 standardize4PCA: bool = False):
+    def __init__(self, video_path: str, standardize4PCA: bool = False):
         """
-        Initialize PCA Generator.
+        Initialize the PCAgenerator object.
 
         Args:
-            motion_zarr_path (str): Path to the Zarr dataset containing motion energy frames.
-            recrop (bool, optional): Whether to crop frames before PCA. Defaults to None.
-            crop_region (tuple, optional): Crop region as (y_start, x_start, y_end, x_end).
-            standardize4PCA (bool, optional): If True, standardizes frames before PCA. Defaults to True.
-            standardizeMasks (bool, optional): If True, standardizes masks when plotting. Defaults to False.
+            video_path (str): Path to the video file (MP4).
+            standardize4PCA (bool): Whether to standardize motion energy before PCA.
         """
-        self.motion_zarr_path = motion_zarr_path
-        self.pkl_file = pkl_file
-        self.npz_file = npz_file
-        self.recrop = recrop
-        self.crop_region = crop_region
-        self.use_cropped_frames = use_cropped_frames
-        self.n_components = 100  # Number of PCA components
-        self.n_to_plot = 3  # Number of components to visualize
+        self.video_path = Path(video_path)
         self.standardize4PCA = standardize4PCA
-        self.chunk_size = 100
-        self.start_index = 0  # First frame with data info should have been dropped when me was computed
-        self.mean = None
-        self.std = None
+        self.n_components = 100
+        self.n_to_plot = 3
+        self.chunk_size = 300
         self._load_metadata()
-        self.me_metadata['crop'] = True # find why it was saved as False
-        #self._compare_crop_settings()
-        #self._get_motion_energy_trace()
-
-    
-    def _compare_crop_settings(self) -> None:
-        """
-        Compares the current crop settings with the metadata and determines
-        whether cropping should be applied or skipped.
-        """
-        if self.recrop is True:
-            if self.crop_region is None:
-                raise ValueError("Crop region cannot be None when crop is set to True")
-            
-            if self.me_metadata.get("crop") is True:
-                if str(self.crop_region) == str(self.me_metadata.get("crop_region")):
-                    print("Skipping cropping since frames were already cropped to the right size in Motion Energy Capsule.")
-                    self.use_cropped_frames = True
-                else:
-                    print("Re-cropping frames since the new crop region differs from the one provided in Motion Energy Capsule.")
-
-        elif self.recrop is None:
-            if self.me_metadata.get("crop") is True:
-                self.use_cropped_frames = True
-                print("Crop was not specified, using cropped frames from Motion Energy Capsule.")
-            elif self.me_metadata.get("crop") is False:
-                print("Computing PCA on full frames.")
-
-        return self
 
     def _load_metadata(self) -> None:
-        """Load metadata from the Zarr store."""
-        root_group = zarr.open_group(self.motion_zarr_path, mode='r')
-        metadata_str = root_group.attrs.get('metadata', None)
-        if metadata_str is None:
-            print("Metadata attribute not found in root_group.attrs. Will load metadata via pkl file.")
-            try:
-                all_metadata = utils.load_pickle_file(self.pkl_file)
-                self.video_metadata = all_metadata.get('video_metadata')
-                me_metadata = all_metadata.pop('video_metadata',None) #remove video metadata
-                self.me_metadata = me_metadata
-                logger.info("Metadata loaded successfully.")
-            except TypeError:
-                print(f'no pickle file in this dataset {self.motion_zarr_path}')
-                print('Will try to run without metadata')
-                self.video_metadata = {}
-                self.me_metadata = {}
-        else:
-            all_metadata = json.loads(metadata_str)
-            self.video_metadata = all_metadata.get('video_metadata')
-            me_metadata = all_metadata.pop('video_metadata',None) #remove video metadata
-            self.me_metadata = me_metadata
-            logger.info("Metadata loaded successfully.")
+        """Load metadata from a JSON file located next to the video."""
+        json_path = self.video_path.parent / "metadata.json"
+        with open(json_path, 'r') as f:
+            metadata = json.load(f)
+        self.video_metadata = metadata["video_metadata"]
+        self.me_metadata = {k: v for k, v in metadata.items() if k != "video_metadata"}
+        logger.info("Metadata loaded successfully.")
 
-        return self
+    @staticmethod
+    def _standardize_chunk(chunk: np.ndarray, mean: np.ndarray, std: np.ndarray) -> np.ndarray:
+        return (chunk - mean) / std
 
-    def _define_crop_region(self, crop_region: tuple = None) -> None:
-        """Define and validate the crop region."""
-        if crop_region is None:
-            crop_region = self.me_metadata.get('crop_region', (200, 290, 280, 360))
-            logger.warning(f"Crop region not found in metadata, defaulting to {crop_region}")
+    def _compute_mean_std(self, num_frames: int) -> tuple:
+        """Compute mean and std over motion energy frames from the video."""
+        cap = cv2.VideoCapture(str(self.video_path))
+        means, stds, counts = [], [], []
 
-        y, x, height, width = crop_region
-        logger.info(f"Using crop region: x={x}, y={y}, width={width}, height={height}")
-        self.crop_region = crop_region
+        for _ in tqdm(range(0, num_frames, self.chunk_size), desc="Computing mean/std"):
+            frames = []
+            for _ in range(self.chunk_size):
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                gray = utils.validate_frame(frame)
+                frames.append(gray.flatten())
+            if frames:
+                chunk_arr = np.stack(frames)
+                means.append(chunk_arr.mean(axis=0))
+                stds.append(chunk_arr.std(axis=0))
+                counts.append(len(frames))
 
-    def _apply_pca_to_motion_energy_without_dask(self):
-        """
-        Apply PCA to motion energy frames.
+        cap.release()
+        mean = np.average(means, axis=0, weights=counts)
+        std = np.average(stds, axis=0, weights=counts)
+        std[std == 0] = 1  # avoid division by zero
+        return mean, std
 
-        Returns:
-            tuple: (PCA model, transformed PCA motion energy, cropped frames).
-        """
-        # Load motion energy frames from Zarr
-        me_store = zarr.DirectoryStore(self.motion_zarr_path)
-        zarr_group = zarr.open(me_store, mode='r')
-        if self.use_cropped_frames:
-            frames_me = zarr_group['cropped_frames']
-        else:
-            frames_me = zarr_group['full_frames']
-        logger.info(f"Loaded motion energy frames with shape {frames_me.shape}")
+    def _apply_pca_to_motion_energy(self):
+        """Fit IncrementalPCA to video motion energy frames."""
+        cap = cv2.VideoCapture(str(self.video_path))
+        self.num_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        ipca = IncrementalPCA(n_components=self.n_components)
 
-        # Define PCA components
-        n_components = self.n_components or 100
-
-        # Apply cropping if needed
-        if self.recrop and self.use_cropped_frames is False:
-            if not self.crop_region:
-                raise ValueError("Crop region cannot be None or empty when crop is set to True")
-            else:
-                crop_y_start, crop_x_start, crop_y_end, crop_x_end = self.crop_region
-                frames_me = frames_me[:, crop_y_start:crop_y_end, crop_x_start:crop_x_end]
-
-        # Standardize if required (see below)
+        mean, std = None, None
         if self.standardize4PCA:
-            logger.info("Standardizing data before PCA.")
-            
-        num_frames = frames_me.shape[0]
-        logger.info(f"Processing {num_frames - self.start_index} frames, starting at frame {self.start_index}.")
+            mean, std = self._compute_mean_std(self.num_frames)
 
-        # Initialize Incremental PCA
-        ipca = IncrementalPCA(n_components=n_components)
+        current_frame = 0
+        while current_frame < self.num_frames:
+            frames = []
+            for _ in range(self.chunk_size):
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                gray = utils.validate_frame(frame)
+                frames.append(gray.flatten())
 
-        # Fit PCA in chunks
-        for i in tqdm(range(self.start_index, num_frames, self.chunk_size), desc="Fitting PCA"):
-            chunk = frames_me[i:i + self.chunk_size]
-
-            # If the last chunk is too small, include the remaining frames
-            if i + self.chunk_size >= num_frames - n_components:
-                chunk = frames_me[i:]
-                logger.info(f"Processing last chunk with shape {chunk.shape}")
-
-            chunk_flattened = chunk.reshape(chunk.shape[0], -1)
-
-            if self.standardize4PCA:
-                chunk_flattened = self._standardize_chunk(chunk_flattened, i)
-
-            ipca.partial_fit(chunk_flattened)
-
-            # Break early if we processed the last chunk
-            if i + self.chunk_size >= num_frames - n_components:
-                print(f'transform last {i}')
+            if not frames:
                 break
+
+            chunk = np.stack(frames)
+            if self.standardize4PCA:
+                chunk = self._standardize_chunk(chunk, mean, std)
+
+            ipca.partial_fit(chunk)
+            current_frame += len(frames)
 
         logger.info("PCA fitting complete.")
 
-        # Transform data in chunks
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
         transformed_chunks = []
-        for i in tqdm(range(self.start_index, num_frames, self.chunk_size), desc="Transforming PCA"):
-            chunk = frames_me[i:i + self.chunk_size]
+        current_frame = 0
 
-            # Merge last small chunk if needed
-            if i + self.chunk_size >= num_frames - n_components:
-                chunk = frames_me[i:]
+        while current_frame < self.num_frames:
+            frames = []
+            for _ in range(self.chunk_size):
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                gray = utils.validate_frame(frame)
+                frames.append(gray.flatten())
 
-            chunk_flattened = chunk.reshape(chunk.shape[0], -1)
-
-            if self.standardize4PCA:
-                chunk_flattened = (chunk_flattened - self.mean) / self.std
-
-                # Check for NaN values after standardization
-                nan_count = np.isnan(chunk_flattened).sum()
-                if nan_count > 0:
-                    logger.warning(f"Standardized data contains {nan_count} NaN values.")
-
-            transformed_chunks.append(ipca.transform(chunk_flattened))
-
-            # Break early if we processed the last chunk
-            if i + self.chunk_size >= num_frames - n_components:
-                print(f'transform last {i}')
+            if not frames:
                 break
 
-        # Combine transformed chunks into a single array
-        pca_motion_energy = np.vstack(transformed_chunks)
+            chunk = np.stack(frames)
+            if self.standardize4PCA:
+                chunk = self._standardize_chunk(chunk, mean, std)
 
-        logger.info(f"PCA transformation complete. Output shape: {pca_motion_energy.shape}")
-        self.pca = ipca
-        self.pca_motion_energy = pca_motion_energy
-        self.explained_variance = ipca.explained_variance_ratio_
+            transformed_chunks.append(ipca.transform(chunk))
+            current_frame += len(frames)
 
-        return self, frames_me
-
-    def _standardize_chunk(self, chunk_flattened: np.ndarray, i: int) -> np.ndarray:
-        """
-        Standardizes a given chunk for PCA processing.
-
-        Args:
-            chunk_flattened (numpy.ndarray): 2D array where each row represents a sample.
-            i (int): Current chunk index.
-
-        Returns:
-            numpy.ndarray: Standardized chunk.
-        """
-        if self.standardize4PCA:
-            if i == self.start_index:
-                self.mean = chunk_flattened.mean(axis=0)
-                self.std = chunk_flattened.std(axis=0)
-
-                if np.any(np.isnan(self.mean)) or np.any(np.isnan(self.std)):
-                    raise ValueError("NaN detected in mean or standard deviation!")
-                if np.any(self.std == 0):
-                    raise ValueError("Standard deviation contains zero values!")
-
-            chunk_flattened = (chunk_flattened - self.mean) / self.std
-
-            # Check for NaN values after standardization
-            nan_count = np.isnan(chunk_flattened).sum()
-            if nan_count > 0:
-                logger.warning(f"Standardized data contains {nan_count} NaN values.")
-
-        return chunk_flattened
-
-
-    def _add_spatial_masks(self, pca_motion_energy: np.ndarray, post_crop_frames_me: zarr.Array) -> None:
-        """
-        Computes and stores spatial masks for PCA visualization.
-
-        Args:
-            pca_motion_energy (np.ndarray): A 2D array (n_samples, n_components) with PCA-transformed motion energy data.
-            post_crop_frames_me (zarr.Array): A 3D array (n_samples, height, width) representing motion energy frames.
-
-        Updates:
-            self.spatial_masks (np.ndarray): Stores computed spatial masks for visualization.
-        """
-        logger.info("Computing spatial masks...")
-        self.spatial_masks = self._compute_spatial_masks_in_chunks(pca_motion_energy, post_crop_frames_me)
-        logger.info("Spatial masks computation complete.")
-
+        cap.release()
+        self.ipca = ipca
+        self.pca_motion_energy = np.vstack(transformed_chunks)
+        logger.info(f"PCA transformation complete. Output shape: {self.pca_motion_energy.shape}")
         return self
 
-
-    def _compute_spatial_masks_in_chunks(self, pca_motion_energy: np.ndarray, post_crop_frames_me: zarr.Array) -> np.ndarray:
+    def _compute_spatial_masks(self) -> np.ndarray:
         """
-        Computes spatial masks from principal components and motion energy.
-
-        Args:
-            pca_motion_energy (np.ndarray): 2D array (n_samples, n_components) containing PCA components.
-            post_crop_frames_me (zarr.Array): 3D array (n_samples, height, width) representing motion energy frames.
-
+        Computes spatial masks for each principal component.
         Returns:
-            np.ndarray: Array of spatial masks, where each mask represents a mean projection of one principal component.
-
-        Raises:
-            ValueError: If array dimensions do not match expectations.
+            np.ndarray: Spatial masks, and the average motion energy frame.
         """
+        if self.pca_motion_energy.ndim != 2:
+            raise ValueError("pca_motion_energy must be 2D")
 
-        # Ensure correct dimensions
-        if pca_motion_energy.ndim != 2:
-            raise ValueError("pca_motion_energy must be a 2D array (n_samples, n_components).")
-
-        if post_crop_frames_me.ndim != 3:
-            raise ValueError("post_crop_frames_me must be a 3D array (n_samples, height, width).")
-
-        # Determine the number of components to process
-        n_components = self.n_to_plot if self.n_to_plot is not None else 3
+        cap = cv2.VideoCapture(str(self.video_path))
+        frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        n_components = min(self.n_to_plot, self.pca_motion_energy.shape[1])
         spatial_masks = []
 
-        logger.info(f"Number of PCA components: {pca_motion_energy.shape[1]}")
-        logger.info(f"Total frames available: {post_crop_frames_me.shape[0] - self.start_index}")
+        logger.info(f"Number of PCA components: {self.pca_motion_energy.shape[1]}")
 
-        
-        self.mean_me_frame = np.mean(post_crop_frames_me[100:200], axis=0)
-        # Iterate over the first n principal components
+        # Compute mean frame for optional visualization
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 100)
+        mean_frames = []
+        for _ in range(100):
+            ret, frame = cap.read()
+            if not ret:
+                break
+            gray = utils.validate_frame(frame)
+            mean_frames.append(gray)
+        self.mean_me_mask = np.mean(np.stack(mean_frames), axis=0)
+
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
         for pc_index in range(n_components):
-            logger.info(f"Processing Principal Component {pc_index + 1}...")
-
-            # Extract the current principal component
-            pc = pca_motion_energy[:, pc_index]
-
-            # Initialize mask sum and count
-            mask_sum = np.zeros(post_crop_frames_me.shape[1:], dtype=np.float64)
+            logger.info(f"Processing Principal Component {pc_index + 1}")
+            pc = self.pca_motion_energy[:, pc_index]
+            mask_sum = np.zeros((frame_height, frame_width), dtype=np.float64)
             count = 0
-            num_frames = post_crop_frames_me.shape[0]
+            current_index = 0
 
-            # Process frames in chunks
-            for i in tqdm(range(self.start_index, num_frames, self.chunk_size), desc=f"PC {pc_index + 1}"):
-                pc_i = i  # Adjust index since PC has one less frame
-                chunk = post_crop_frames_me[i:i + self.chunk_size]
-                pc_chunk = pc[pc_i:pc_i + self.chunk_size, np.newaxis, np.newaxis]
+            while current_index < len(pc):
+                frames = []
+                pc_chunk = []
 
-                # Handle last chunk separately
-                if i + self.chunk_size >= num_frames - n_components:
-                    chunk = post_crop_frames_me[i:]
-                    pc_chunk = pc[pc_i:, np.newaxis, np.newaxis]
-                    logger.info(f"Processing last chunk of PC {pc_index + 1}, shape: {chunk.shape}")
+                for _ in range(self.chunk_size):
+                    ret, frame = cap.read()
+                    if not ret or current_index >= len(pc):
+                        break
+                    gray = utils.validate_frame(frame)
+                    frames.append(gray)
+                    pc_chunk.append(pc[current_index])
+                    current_index += 1
 
-                # Ensure chunk and PC sizes match
-                if len(chunk) != len(pc_chunk):
-                    raise ValueError(f"Frame length ({len(chunk)}) does not match PC length ({len(pc_chunk)}).")
-
-                # Compute chunk masks
-                chunk_masks = chunk * pc_chunk
-
-                # Accumulate mask sum
-                mask_sum += np.sum(chunk_masks, axis=0)
-
-                # Update the frame count
-                count += chunk_masks.shape[0]
-
-                # Stop processing if last chunk is reached
-                if i + self.chunk_size >= num_frames - n_components:
+                if not frames:
                     break
 
-            # Compute the mean spatial mask
-            mean_mask = mask_sum / count
+                frames_arr = np.stack(frames)
+                pc_arr = np.array(pc_chunk)[:, np.newaxis, np.newaxis]
+                mask_sum += np.sum(frames_arr * pc_arr, axis=0)
+                count += len(frames)
 
-            # Store the mask
-            spatial_masks.append(mean_mask)
+            spatial_masks.append(mask_sum / count)
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
-        spatial_masks = np.array(spatial_masks)
-        return spatial_masks
+        cap.release()
+        return np.array(spatial_masks)
 
+    def _add_spatial_masks(self) -> None:
+        """Computes and adds spatial masks to the object."""
+        logger.info("Computing spatial masks...")
+        self.spatial_masks = self._compute_spatial_masks()
+        logger.info("Spatial masks computation complete.")
+        return self
 
     def _save_results(self) -> None:
         """
-        Saves the PCA object and results as a pickle file.
+        Saves the PCAgenerator metadata as JSON and the fitted PCA model as a pickle file.
 
-        The function constructs the results folder path, creates directories if needed,
-        and saves the object as a serialized dictionary.
-
-        Returns:
-            None
+        JSON includes all serializable metadata from the object (excluding arrays and models).
+        Pickle stores the fitted PCA model.
         """
         logger.info("Saving PCA results...")
 
-        # Construct results folder path
+        # Construct results path
         top_results_folder = utils.construct_results_folder(self.video_metadata)
-        self.top_results_path = os.path.join(utils.get_results_folder(), top_results_folder)
-
-        # Ensure directory exists before saving
+        self.top_results_path = os.path.join(RESULTS, top_results_folder)
         os.makedirs(self.top_results_path, exist_ok=True)
 
-        # Save the object as a pickle file
-        save_path = os.path.join(self.top_results_path, "fit_motion_energy_pca.pkl")
-        with open(save_path, "wb") as f:
-            pickle.dump(utils.object_to_dict(self), f)
-        logger.info(f"PCA dictionary saved at: {save_path}")
+        # Save serializable attributes as JSON
+        json_dict = {
+            "video_path": str(self.video_path),
+            "n_components": self.n_components,
+            "n_to_plot": self.n_to_plot,
+            "chunk_size": self.chunk_size,
+            "standardize4PCA": self.standardize4PCA,
+            "video_metadata": self.video_metadata,
+            "me_metadata": self.me_metadata,
+            "top_results_path": self.top_results_path,
+            "pcs": self.pca_motion_energy,
+        }
+        json_path = os.path.join(self.top_results_path, "pca_generator_metadata.json")
+        with open(json_path, "w") as f:
+            json.dump(json_dict, f, indent=2)
+        logger.info(f"PCA metadata saved to: {json_path}")
+
+        # Save PCA model as pickle
         try:
-            # Save PCA object to a file
-            save_path = os.path.join(self.top_results_path, "pca_model.pkl")
-            with open(save_path, "wb") as f:
-                pickle.dump(self.pca, f)
-        except:
-            logger.info("Could not save pca object")
+            pkl_path = os.path.join(self.top_results_path, "pca_model.pkl")
+            with open(pkl_path, "wb") as f:
+                pickle.dump(self.ipca, f)
+            logger.info(f"PCA model saved to: {pkl_path}")
+        except Exception as e:
+            logger.warning(f"Could not save PCA model: {e}")
 
         return self
