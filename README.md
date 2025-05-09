@@ -1,12 +1,12 @@
-# PCA-Based Motion Energy Analysis  
+# Video dimensionality reduction
 
-This capsule is a part of Behavior Video QC to apply Principal Component Analysis (PCA) to motion energy data. The script loads motion energy data, applies PCA, generates spatial masks, and visualizes the results. Computing time depends on number and size of frames. An hour long video with ~600x400 frames at 60 Hz takes about 30 min.
-
+This capsule is a part of Behavior Video QC to apply dimensionality reduciton technics to motion energy data. 
+Currently, only uses PCA, but other analyses can be added.
 ---
 
 # PCAgenerator
 
-`PCAgenerator` is a Python class for computing **Principal Components Analysis (PCA)** on motion energy data extracted from video files (typically MP4). It is designed to handle long videos by processing frames in **chunks**, with optional standardization, and to compute **spatial masks** for visualization of principal components.
+`PCAgenerator` is a Python class for computing **Principal Components Analysis (PCA)** on motion energy data extracted from video files (typically MP4). It is designed to handle long videos by processing frames in **chunks**, with optional standardization, and to compute **spatial masks** for visualization of principal components. The script loads motion energy data, applies PCA, generates spatial masks, and visualizes the results. Computing time depends on number and size of frames. An hour long video with ~600x400 frames at 60 Hz takes about 30 min.
 
 ## Features
 
