@@ -1,9 +1,9 @@
 import os
 import json
 import pickle
+import cv2
 import numpy as np
 from tqdm import tqdm
-import matplotlib.pyplot as plt
 from pathlib import Path
 import os
 
@@ -33,7 +33,7 @@ def validate_frame(frame: np.ndarray) -> np.ndarray:
         raise ValueError(f"Unexpected frame shape: {frame.shape}. Expected 2D grayscale or 3D color frame.")
 
 
-def construct_results_folder(self) -> str:
+def construct_results_folder(metadata) -> str:
     """
     Construct a folder name for results storage based on video metadata.
 
@@ -43,29 +43,59 @@ def construct_results_folder(self) -> str:
     Raises:
         KeyError: If required metadata fields are missing.
     """
-    metadata = self.video_metadata
+   
     try:
         return f"{metadata['data_asset_name']}_{metadata['camera_label']}_PCA"
     except KeyError as e:
         raise KeyError(f"Missing required metadata field: {e}")
 
+
 def object_to_dict(obj):
+    """
+    Recursively convert an object (with __dict__) to a dictionary,
+    converting any non-JSON-serializable elements to serializable types.
+    
+    Args:
+        obj: The object or structure to convert.
+    
+    Returns:
+        A JSON-serializable dictionary or list representation.
+    """
     if hasattr(obj, "__dict__"):
-        meta_dict = {key: object_to_dict(value) for key, value in vars(obj).items()}
-    elif isinstance(obj, list):
-        meta_dict = [object_to_dict(item) for item in obj]
+        data = {key: object_to_dict(value) for key, value in vars(obj).items()}
     elif isinstance(obj, dict):
-        meta_dict = {key: object_to_dict(value) for key, value in obj.items()}
+        data = {key: object_to_dict(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        data = [object_to_dict(item) for item in obj]
+    elif isinstance(obj, tuple):
+        data = tuple(object_to_dict(item) for item in obj)
     else:
-        meta_dict = obj
+        data = obj
 
-    # Convert Path to str for json serialization
-    if isinstance(meta_dict, dict):
-        return {k: str(v) if isinstance(v, Path) else v for k, v in meta_dict.items()}
-    elif isinstance(meta_dict, list):
-        return [str(v) if isinstance(v, Path) else v for v in meta_dict]
-    elif isinstance(meta_dict, Path):
-        return str(meta_dict)
+    return _obj_to_dict(data)
+
+
+def _obj_to_dict(data):
+    """
+    Recursively convert non-JSON-serializable items to JSON-compatible types.
+    
+    Args:
+        data: The data structure (dict, list, etc.) to convert.
+    
+    Returns:
+        A structure with all values converted to JSON-serializable types.
+    """
+    if isinstance(data, dict):
+        return {k: _obj_to_dict(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [_obj_to_dict(item) for item in data]
+    elif isinstance(data, tuple):
+        return [_obj_to_dict(item) for item in data]  # Convert tuple to list
+    elif isinstance(data, np.ndarray):
+        return data.tolist()
+    elif isinstance(data, Path):
+        return str(data)
+    elif isinstance(data, (np.integer, np.floating)):
+        return data.item()
     else:
-        return meta_dict
-
+        return data

@@ -1,5 +1,5 @@
 metadata_version: 1
-name: motion_energy_PCA
+name: video_dimensionality_reduction
 description: Basic structure of a capsule to be customized as needed.
 authors:
 - name: Iryna Yavorska

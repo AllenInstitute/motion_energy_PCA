@@ -22,3 +22,5 @@ RUN cd /.code-server \
 	&& tar -xvf code-server.tar.gz \
 	&& rm code-server.tar.gz \
 	&& ln -s /.code-server/code-server-4.9.0-linux-amd64/bin/code-server  /usr/bin/code-server
+
+RUN apt-get update && apt-get install ffmpeg libsm6 libxext6  -y

@@ -37,7 +37,8 @@ class PCAgenerator:
 
     def _load_metadata(self) -> None:
         """Load metadata from a JSON file located next to the video."""
-        json_path = self.video_path.parent / "metadata.json"
+        json_path = Path(self.video_path.parent, "postprocess_metadata.json")
+        print(json_path)
         with open(json_path, 'r') as f:
             metadata = json.load(f)
         self.video_metadata = metadata["video_metadata"]
@@ -149,7 +150,7 @@ class PCAgenerator:
         n_components = min(self.n_to_plot, self.pca_motion_energy.shape[1])
         spatial_masks = []
 
-        logger.info(f"Number of PCA components: {self.pca_motion_energy.shape[1]}")
+        logger.info("Computing PC masks..")
 
         # Compute mean frame for optional visualization
         cap.set(cv2.CAP_PROP_POS_FRAMES, 100)
@@ -220,17 +221,8 @@ class PCAgenerator:
         os.makedirs(self.top_results_path, exist_ok=True)
 
         # Save serializable attributes as JSON
-        json_dict = {
-            "video_path": str(self.video_path),
-            "n_components": self.n_components,
-            "n_to_plot": self.n_to_plot,
-            "chunk_size": self.chunk_size,
-            "standardize4PCA": self.standardize4PCA,
-            "video_metadata": self.video_metadata,
-            "me_metadata": self.me_metadata,
-            "top_results_path": self.top_results_path,
-            "pcs": self.pca_motion_energy,
-        }
+        json_dict = utils.object_to_dict(self)
+
         json_path = os.path.join(self.top_results_path, "pca_generator_metadata.json")
         with open(json_path, "w") as f:
             json.dump(json_dict, f, indent=2)
